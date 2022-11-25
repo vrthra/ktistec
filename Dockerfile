@@ -2,7 +2,7 @@ FROM crystallang/crystal:1.19.1-alpine AS builder
 RUN apk update && apk upgrade && apk add make sqlite-static yaml-dev musl-dev gc-dev gc-static pcre2-dev pcre2-static gmp-dev gmp-static
 WORKDIR /build/
 ARG version
-RUN git clone --branch ${version:-main} --depth 1 https://github.com/toddsundsted/ktistec .
+ADD . .
 RUN shards update && shards install --production
 RUN crystal build src/ktistec/server.cr --static --no-debug --release
 
