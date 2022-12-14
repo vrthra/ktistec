@@ -20,6 +20,9 @@ nav.ui.top.fixed.inverted.navigation.menu data-turbo-prefetch="false"
       a.item href=home_path
         i.home.icon
         span.text Home
+      a.item href="https://rahul.gopinath.org"
+        i.external.alternate.icon
+        span.text gopinath.org
       .right.menu
         a.item href=sessions_path Sign In
     - else
