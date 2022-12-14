@@ -1,7 +1,7 @@
 nav.ui.top.fixed.inverted.navigation.menu
   .ui.text.container
     - if (_account = env.account?)
-      a.item href=actor_path(_account) Home
+      a.item href=actor_path(_account) Social
       a.item href=search_path Search
       a.item href=everything_path Everything
       .compact.menu
@@ -18,8 +18,7 @@ nav.ui.top.fixed.inverted.navigation.menu
           .ui.action.input
             input.link.item type="submit" value="Sign Out"
     - elsif Account.count > 0
-      a.item href=home_path Home
-      .right.menu
-        a.item href=sessions_path Sign In
+      a.item href=home_path Social
+      a.item href="https://rahul.gopinath.org" Home
     - else
       a.item Ktistec
