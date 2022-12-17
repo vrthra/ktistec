@@ -162,7 +162,7 @@ module ActivityPub
     # Includes local posts. Does not include private (not visible)
     # posts.
     #
-    def self.federated_posts(page = 1, size = 10)
+    def self.federated_posts(page = 1, size = 10, search="")
       query = <<-QUERY
          SELECT #{Object.columns(prefix: "o")}
            FROM objects AS o
@@ -196,7 +196,7 @@ module ActivityPub
     #
     # Does not include private (not visible) posts and replies.
     #
-    def self.public_posts(page = 1, size = 10)
+    def self.public_posts(page = 1, size = 10, search="")
       query = <<-QUERY
          SELECT DISTINCT #{Object.columns(prefix: "o")}
            FROM objects AS o

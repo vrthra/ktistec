@@ -7,7 +7,7 @@ class Tag
     belongs_to subject, class_name: ActivityPub::Object | ActivityPub::Actor, foreign_key: subject_iri, primary_key: iri
     validates(subject) { "missing: #{subject_iri}" unless subject? }
 
-    def self.objects_with_tag(name, page = 1, size = 10)
+    def self.objects_with_tag(name, page = 1, size = 10, search="")
       query = <<-QUERY
         SELECT #{ActivityPub::Object.columns(prefix: "o")}
           FROM objects AS o, tags AS t

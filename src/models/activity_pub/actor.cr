@@ -151,12 +151,16 @@ module ActivityPub
         nil
     end
 
-    private def query(type, orig, dest, public = true)
+    private def query(type, orig, dest, search="", public = true)
       public = public ? "AND r.confirmed = 1 AND r.visible = 1" : nil
+      if !/^[a-zA-Z@._ -]*$/ =~ search
+         search = ""
+      end
       query = <<-QUERY
         SELECT #{Actor.columns(prefix: "a")}
           FROM actors AS a, relationships AS r
          WHERE a.iri = r.#{orig}
+           AND a.iri LIKE "%#{search}%"
            AND a.deleted_at IS NULL
            AND a.blocked_at IS NULL
            AND r.type = "#{type}"
@@ -179,12 +183,12 @@ module ActivityPub
       QUERY
     end
 
-    def all_following(page = 1, size = 10, public = true)
+    def all_following(page = 1, size = 10, search="", public = true)
       {% begin %}
         {% vs = @type.instance_vars.select(&.annotation(Persistent)) %}
         Ktistec::Util::PaginatedArray(Actor).new.tap do |array|
           Ktistec.database.query(
-            query(Relationship::Social::Follow, :to_iri, :from_iri, public),
+            query(Relationship::Social::Follow, :to_iri, :from_iri, search, public),
             self.iri, self.iri, ((page - 1) * size).to_i, size.to_i + 1
           ) do |rs|
             rs.each do
@@ -204,12 +208,12 @@ module ActivityPub
       {% end %}
     end
 
-    def all_followers(page = 1, size = 10, public = false)
+    def all_followers(page = 1, size = 10, search="", public = false)
       {% begin %}
         {% vs = @type.instance_vars.select(&.annotation(Persistent)) %}
         Ktistec::Util::PaginatedArray(Actor).new.tap do |array|
           Ktistec.database.query(
-            query(Relationship::Social::Follow, :from_iri, :to_iri, public),
+            query(Relationship::Social::Follow, :from_iri, :to_iri, search, public),
             self.iri, self.iri, ((page - 1) * size).to_i, size.to_i + 1
           ) do |rs|
             rs.each do
@@ -229,7 +233,7 @@ module ActivityPub
       {% end %}
     end
 
-    def drafts(page = 1, size = 10)
+    def drafts(page = 1, size = 10, search="")
       query = <<-QUERY
          SELECT #{Object.columns(prefix: "o")}
            FROM objects AS o
@@ -372,7 +376,7 @@ module ActivityPub
       Ktistec.database.scalar(query, self.iri, object.iri).as(Int64) > 0
     end
 
-    def in_outbox(page = 1, size = 10, public = true)
+    def in_outbox(page = 1, size = 10, search="", public = true)
       self.class.content(self.iri, Relationship::Content::Outbox, nil, [ActivityPub::Activity::Delete, ActivityPub::Activity::Undo], page, size, public)
     end
 
@@ -380,7 +384,7 @@ module ActivityPub
       find_in?(object, Relationship::Content::Outbox, inclusion, exclusion)
     end
 
-    def in_inbox(page = 1, size = 10, public = true)
+    def in_inbox(page = 1, size = 10, search = "", public = true)
       self.class.content(self.iri, Relationship::Content::Inbox, nil, [ActivityPub::Activity::Delete, ActivityPub::Activity::Undo], page, size, public)
     end
 
@@ -437,7 +441,7 @@ module ActivityPub
     #
     # Does not include private (not visible) posts.
     #
-    def known_posts(page = 1, size = 10)
+    def known_posts(page = 1, size = 10, search="")
       query = <<-QUERY
          SELECT #{Object.columns(prefix: "o")}
            FROM objects AS o
@@ -467,7 +471,7 @@ module ActivityPub
     #
     # Does not include private (not visible) posts and replies.
     #
-    def public_posts(page = 1, size = 10)
+    def public_posts(page = 1, size = 10, search="")
       query = <<-QUERY
          SELECT DISTINCT #{Object.columns(prefix: "o")}
            FROM objects AS o
@@ -521,7 +525,7 @@ module ActivityPub
     #
     # Includes private posts and replies!
     #
-    def all_posts(page = 1, size = 10)
+    def all_posts(page = 1, size = 10, search="")
       query = <<-QUERY
          SELECT DISTINCT #{Object.columns(prefix: "o")}
            FROM objects AS o
@@ -576,7 +580,10 @@ module ActivityPub
     # May be filtered to include only objects with associated
     # activities of the specified type (via `inclusion`).
     #
-    def timeline(exclude_replies = false, inclusion = nil, page = 1, size = 10)
+    def timeline(exclude_replies = false, inclusion = nil, page = 1, size = 10, search = "")
+      if !/^[a-zA-Z@._ -]*$/ =~ search
+         search = ""
+      end
       exclude_replies =
         exclude_replies ?
         "AND o.in_reply_to_iri IS NULL" :
@@ -611,6 +618,7 @@ module ActivityPub
             AND o.blocked_at IS NULL
             AND t.deleted_at IS NULL
             AND t.blocked_at IS NULL
+            AND t.iri LIKE "%#{search}%"
             AND o.id NOT IN (
                SELECT o.id
                  FROM objects AS o
@@ -700,7 +708,7 @@ module ActivityPub
     # case, are associated with the actor on which this method is
     # called.
     #
-    def notifications(page = 1, size = 10)
+    def notifications(page = 1, size = 10, search="")
       query = <<-QUERY
          SELECT #{Activity.columns(prefix: "a")}
            FROM activities AS a
