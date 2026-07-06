@@ -337,7 +337,7 @@ connection count is capped at a level SQLite can actually use.)
 
 ## 5. Task worker issues write transactions every ≤5 seconds, even when idle
 
-**Status:** not yet applied
+**Status:** applied — retention sweep gated to `CLEANUP_INTERVAL` (1 hour) in `src/models/task.cr`; the reservation `UPDATE ... RETURNING` is unchanged (it is the atomic work-claiming mechanism, `4b3a0c3`)
 **Area:** running time / background I/O (constant, 24/7)
 **Files:** `src/workers/task_worker.cr`, `src/models/task.cr`
 

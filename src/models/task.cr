@@ -56,6 +56,23 @@ class Task
   #
   DOWN_DETECTION_SPAN = 80.hours
 
+  # How often `scheduled(reserve: true)` purges tasks that have aged
+  # out of retention. The worker loop reserves work at least every
+  # five seconds around the clock, and running the retention DELETE
+  # on every poll issued a write transaction (~17k/day) whose only
+  # effect was deleting tasks within seconds of aging out. Retention
+  # is measured in hours (2h/96h above), so an hourly sweep changes
+  # nothing observable while eliminating the constant background
+  # write traffic. See FIXES.md #5.
+  #
+  CLEANUP_INTERVAL = 1.hour
+
+  # When the retention sweep last ran. Starts at the epoch so the
+  # first reservation after boot always sweeps. Exposed as a property
+  # so tests that exercise the sweep can reset the gate.
+  #
+  class_property last_cleanup_at : Time = Time::UNIX_EPOCH
+
   # Minimum time delta threshold for applying randomization.
   #
   # Task scheduling deltas below this threshold will not be randomized
@@ -147,18 +164,23 @@ class Task
 
   def self.scheduled(now = Time.utc, reserve = false)
     if reserve
-      cleanup = <<-SQL
-         DELETE FROM tasks
-          WHERE running = 0
-            AND complete = 1
-            AND backtrace IS NULL
-            AND (
-              ((failures IS NULL OR failures = '[]') AND created_at < ?)
-              OR
-              ((failures IS NOT NULL AND failures != '[]') AND created_at < ?)
-            )
-      SQL
-      exec(cleanup, now - SUCCESSFUL_TASK_RETENTION, now - FAILED_TASK_RETENTION)
+      # sweep aged-out tasks at most once per CLEANUP_INTERVAL, not on
+      # every five-second worker poll -- retention is hours-grained
+      if now - @@last_cleanup_at >= CLEANUP_INTERVAL
+        @@last_cleanup_at = now
+        cleanup = <<-SQL
+           DELETE FROM tasks
+            WHERE running = 0
+              AND complete = 1
+              AND backtrace IS NULL
+              AND (
+                ((failures IS NULL OR failures = '[]') AND created_at < ?)
+                OR
+                ((failures IS NOT NULL AND failures != '[]') AND created_at < ?)
+              )
+        SQL
+        exec(cleanup, now - SUCCESSFUL_TASK_RETENTION, now - FAILED_TASK_RETENTION)
+      end
       query = <<-SQL
          UPDATE tasks
             SET running = 1

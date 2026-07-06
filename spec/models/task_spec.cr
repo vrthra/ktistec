@@ -189,6 +189,10 @@ Spectator.describe Task do
     before_each do
       task6.assign(running: true).save
       task7.assign(complete: true).save
+      # the retention sweep in `scheduled(reserve: true)` is gated to
+      # run at most once per CLEANUP_INTERVAL; open the gate so every
+      # example observes the sweep
+      described_class.last_cleanup_at = Time::UNIX_EPOCH
     end
 
     let(now) { Time.utc(2016, 2, 15, 10, 20, 7) }
