@@ -31,8 +31,50 @@ module Ktistec
   #   (cheap for SQLite's parser, and this workload is I/O-bound) for
   #   the elimination of the entire failure class. See FIXES.md #1.
   #
+  # journal_mode=WAL
+  #
+  #   The database has historically run in SQLite's default rollback
+  #   (DELETE) journal mode, in which every write transaction takes
+  #   an exclusive lock that blocks all readers, and any open reader
+  #   blocks the writer. This server writes continuously in the
+  #   background (inbox deliveries, materialized-view reconciliation,
+  #   task bookkeeping) while serving interactive reads, so writes
+  #   and page loads serialize against each other. WAL lets readers
+  #   proceed concurrently with the writer and replaces the per-commit
+  #   journal-file create/fsync/delete cycle with an append. The mode
+  #   is persistent: the first boot converts the database file, and a
+  #   `-wal`/`-shm` sidecar pair appears next to it. Consequently a
+  #   raw file copy of just the .db file taken while the server runs
+  #   can miss recent writes still in the WAL -- use the SQLite backup
+  #   API (`sqlite3 db ".backup out.db"`; `Task::Backup` already uses
+  #   it) or stop the server first.
+  #
+  # synchronous=NORMAL
+  #
+  #   In WAL mode, NORMAL syncs at checkpoint boundaries instead of
+  #   at every commit. Application-level corruption is not a risk in
+  #   WAL+NORMAL (the WAL is self-consistent); the trade-off is that
+  #   the most recent commits may be lost on power failure/OS crash
+  #   (not on application crash). Given hundreds of small background
+  #   write transactions per hour on an I/O-constrained host, the
+  #   fsync reduction is substantial. FULL remains the right choice
+  #   only in rollback mode, which the WAL setting above retires.
+  #
+  # busy_timeout=5000
+  #
+  #   Without a busy timeout, SQLite lock contention fails immediately
+  #   with SQLITE_BUSY ("database is locked") instead of waiting for
+  #   the lock to clear. Upstream has handled the fallout of this
+  #   symptomatically -- 57dd8c0 wraps the task-worker loop in a
+  #   rescue for exactly these exceptions. Five seconds of patience
+  #   converts transient contention (e.g. a checkpoint or a large
+  #   reconcile) from an error into a short wait. See FIXES.md #3.
+  #
   DB_PARAMS = [
     "prepared_statements_cache=false",
+    "journal_mode=WAL",
+    "synchronous=NORMAL",
+    "busy_timeout=5000",
   ].join('&')
 
   @@db_uri : String = begin

@@ -204,7 +204,7 @@ let me know if you want me to build this out as a real change.
 
 ## 3. SQLite runs in rollback-journal mode with no busy timeout — writers block all readers
 
-**Status:** not yet applied
+**Status:** applied — `journal_mode=WAL&synchronous=NORMAL&busy_timeout=5000` via `DB_PARAMS` in `src/framework/database.cr`
 **Area:** running time (request latency under concurrent load) + robustness
 **Files:** `src/framework/database.cr` (same line as Fix #1)
 
