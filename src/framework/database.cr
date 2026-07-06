@@ -70,11 +70,30 @@ module Ktistec
   #   converts transient contention (e.g. a checkpoint or a large
   #   reconcile) from an error into a short wait. See FIXES.md #3.
   #
+  # max_pool_size=4, max_idle_pool_size=4
+  #
+  #   crystal-db's pool defaults are max_pool_size=0 (unlimited) with
+  #   max_idle_pool_size=1: any overlap of work opens brand-new
+  #   connections -- each paying sqlite3_open, UDF registration in
+  #   `setup_connection` (the `strip` function below), and a cold
+  #   statement/page cache -- and then closes all but one of them as
+  #   soon as the burst passes. Closing is not free either: the
+  #   `do_close` override in ext/sqlite3.cr runs `PRAGMA optimize` (an
+  #   ANALYZE pass) on every close, so oscillating load continuously
+  #   churns open/optimize/close. Unbounded connections buy nothing on
+  #   SQLite -- there is only ever one writer at a time -- they just
+  #   add lock contention and per-connection memory. Keeping the two
+  #   bounds equal means the pool grows to its cap once and stays
+  #   warm; `PRAGMA optimize` then runs only at real shutdown.
+  #   See FIXES.md #4.
+  #
   DB_PARAMS = [
     "prepared_statements_cache=false",
     "journal_mode=WAL",
     "synchronous=NORMAL",
     "busy_timeout=5000",
+    "max_pool_size=4",
+    "max_idle_pool_size=4",
   ].join('&')
 
   @@db_uri : String = begin

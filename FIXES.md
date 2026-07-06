@@ -295,7 +295,7 @@ into the same line of `src/framework/database.cr`:
 
 ## 4. Connection-pool churn: every burst of concurrency opens cold connections, then closes them through `PRAGMA optimize`
 
-**Status:** not yet applied
+**Status:** applied — `max_pool_size=4&max_idle_pool_size=4` via `DB_PARAMS` in `src/framework/database.cr`
 **Area:** running time (latency spikes under concurrent requests)
 **Files:** `src/framework/database.cr` (same URI line), `src/framework/ext/sqlite3.cr`
 
