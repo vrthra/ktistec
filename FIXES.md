@@ -8,7 +8,21 @@ ready-to-apply patch, for review before we act on it.
 
 ## 1. Unbounded prepared-statement cache on the single long-lived DB connection
 
-**Status:** applied — `prepared_statements_cache=false` via `DB_PARAMS` in `src/framework/database.cr`
+**Status:** applied — as a **bounded cache** (`DB::StringKeyCache` capped at 512
+entries with close-on-evict) in `src/framework/ext/sqlite3.cr`, **not** via
+`prepared_statements_cache=false` as originally proposed below.
+
+> **Revision discovered during verification:** the originally proposed
+> `prepared_statements_cache=false` crashes on first boot ("unable to close
+> due to unfinalized statements") and would leak native `sqlite3_stmt`
+> handles at runtime. Root cause is an upstream crystal-db defect on the
+> `Database#exec` path: `PoolPreparedStatement#build_statement` builds via
+> `conn.prepared.build`, which deliberately skips the `auto_close` flag
+> (`session_methods.cr` expects "the user" to close explicitly), and
+> `perform_exec_and_release` only releases the *connection* — nothing ever
+> closes the statement. With the cache on, the cache close at connection
+> shutdown was what finalized statements; with it off, nothing does.
+> A bounded cache keeps the fast path and caps the leak instead.
 **Area:** memory (steady-state, grows for the life of the process)
 **Files:** `src/framework/database.cr`
 

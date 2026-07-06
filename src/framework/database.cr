@@ -14,22 +14,19 @@ module Ktistec
   # `SQLite3::Connection::Options#pragma_statement`). Everything here
   # therefore applies uniformly to each connection the pool opens.
   #
-  # prepared_statements_cache=false
-  #
-  #   crystal-db caches every prepared statement per connection,
-  #   keyed by the literal SQL text, in an unbounded Hash with no
-  #   eviction (DB::StringKeyCache). Connections here live for the
-  #   life of the process, so any code path that interpolates
-  #   runtime-varying values into SQL text (rather than binding them
-  #   with `?`) mints a new cache entry per distinct value --
-  #   unbounded heap growth. This exact mechanism caused the memory
-  #   leaks fixed in v2.0.0-4 and v2.0.0-6 ("Fix a memory leak caused
-  #   by string interpolation in query string construction"); those
-  #   fixes parameterized the two known offending call sites but left
-  #   the cache itself unbounded, so any regression reintroduces the
-  #   leak silently. Disabling the cache trades a per-query re-parse
-  #   (cheap for SQLite's parser, and this workload is I/O-bound) for
-  #   the elimination of the entire failure class. See FIXES.md #1.
+  # Note on the prepared-statement cache: crystal-db caches every
+  # prepared statement per connection, keyed by the literal SQL
+  # text, in an unbounded Hash with no eviction -- the mechanism
+  # behind the memory leaks fixed in v2.0.0-4 and v2.0.0-6 ("Fix a
+  # memory leak caused by string interpolation in query string
+  # construction"). The driver's `prepared_statements_cache=false`
+  # option is NOT a usable fix: on the `Database#exec` path,
+  # uncached statements are never finalized (PoolPreparedStatement
+  # builds via `conn.prepared.build`, which skips `auto_close`, and
+  # nothing else closes them), so disabling the cache leaks native
+  # sqlite3_stmt handles and makes `sqlite3_close` fail with
+  # "unfinalized statements". The cache is instead bounded (with
+  # proper eviction) in ext/sqlite3.cr. See FIXES.md #1.
   #
   # journal_mode=WAL
   #
@@ -88,7 +85,6 @@ module Ktistec
   #   See FIXES.md #4.
   #
   DB_PARAMS = [
-    "prepared_statements_cache=false",
     "journal_mode=WAL",
     "synchronous=NORMAL",
     "busy_timeout=5000",

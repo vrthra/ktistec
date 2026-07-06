@@ -10,6 +10,59 @@ module DB
       # override the library definition of `emit_log` to silence it.
     end
   end
+
+  # Bound the per-connection prepared-statement cache.
+  #
+  # crystal-db's StringKeyCache grows without limit: every distinct
+  # SQL text ever executed on a connection stays cached (statement
+  # handle and all) until the connection closes, and connections here
+  # live for the life of the process. Any code path that interpolates
+  # runtime-varying values into SQL text instead of binding them with
+  # `?` therefore grows the heap without bound -- the mechanism behind
+  # the memory leaks fixed in v2.0.0-4 (00b6395a) and v2.0.0-6
+  # (d87000a9). Those fixes parameterized the known offending call
+  # sites but left the cache unbounded, so any future regression
+  # reintroduces the leak silently.
+  #
+  # The driver's `prepared_statements_cache=false` option is not a
+  # usable alternative: on the `Database#exec` path uncached
+  # statements are never finalized (`PoolPreparedStatement` builds
+  # via `conn.prepared.build`, which deliberately skips `auto_close`,
+  # and nothing else closes them), so disabling the cache leaks
+  # native sqlite3_stmt handles and makes `sqlite3_close` fail with
+  # "unable to close due to unfinalized statements".
+  #
+  # Bounding the cache keeps the fast path (the application's fixed
+  # repertoire of queries is far smaller than the cap, so steady-state
+  # hit rate is unaffected) while capping the damage of any
+  # interpolated-SQL regression at MAX_ENTRIES statements. Eviction is
+  # insertion-order (Crystal Hashes preserve it): a hot statement that
+  # gets evicted is simply re-prepared and re-enters the cache.
+  #
+  # Closing an evicted statement is safe here: a connection executes
+  # one operation at a time (an open ResultSet keeps the connection
+  # checked out, and nested queries check out a different connection
+  # from the pool), so the eviction victim -- necessarily not the
+  # statement being fetched -- cannot be mid-execution. `close` is
+  # idempotent (DB::Disposable), and PoolStatement holds no statement
+  # references across executions, so a closed statement is rebuilt on
+  # next use.
+  #
+  class StringKeyCache(T)
+    MAX_ENTRIES = 512
+
+    def fetch(key : String, &) : T
+      value = @cache.fetch(key, nil)
+      unless value
+        while @cache.size >= MAX_ENTRIES
+          _, evicted = @cache.shift
+          evicted.close if evicted.responds_to?(:close)
+        end
+        value = @cache[key] = yield
+      end
+      value
+    end
+  end
 end
 
 private alias Supported = JSON::Serializable | Array(JSON::Serializable) | Hash(String, String) | Hash(String, JSON::Any) | Array(String)
