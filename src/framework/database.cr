@@ -4,13 +4,46 @@ require "sqlite3"
 require "./ext/sqlite3"
 
 module Ktistec
+  # Connection parameters appended to the SQLite connection URI.
+  #
+  # crystal-db and crystal-sqlite3 both read configuration from the
+  # URI query string: pool options are parsed by `DB::Pool::Options`
+  # and connection options by `DB::Connection::Options`, while the
+  # sqlite3 driver turns its recognized parameters into PRAGMAs that
+  # it executes on every new connection (see
+  # `SQLite3::Connection::Options#pragma_statement`). Everything here
+  # therefore applies uniformly to each connection the pool opens.
+  #
+  # prepared_statements_cache=false
+  #
+  #   crystal-db caches every prepared statement per connection,
+  #   keyed by the literal SQL text, in an unbounded Hash with no
+  #   eviction (DB::StringKeyCache). Connections here live for the
+  #   life of the process, so any code path that interpolates
+  #   runtime-varying values into SQL text (rather than binding them
+  #   with `?`) mints a new cache entry per distinct value --
+  #   unbounded heap growth. This exact mechanism caused the memory
+  #   leaks fixed in v2.0.0-4 and v2.0.0-6 ("Fix a memory leak caused
+  #   by string interpolation in query string construction"); those
+  #   fixes parameterized the two known offending call sites but left
+  #   the cache itself unbounded, so any regression reintroduces the
+  #   leak silently. Disabling the cache trades a per-query re-parse
+  #   (cheap for SQLite's parser, and this workload is I/O-bound) for
+  #   the elimination of the entire failure class. See FIXES.md #1.
+  #
+  DB_PARAMS = [
+    "prepared_statements_cache=false",
+  ].join('&')
+
   @@db_uri : String = begin
-    ENV["KTISTEC_DB"]?.try { |db| "sqlite3://#{db}" } ||
-      if ENV["KEMAL_ENV"]? == "production"
-        "sqlite3://#{File.expand_path("~/.ktistec.db", home: true)}"
-      else
-        "sqlite3://ktistec.db"
-      end
+    if (db = ENV["KTISTEC_DB"]?)
+      # KTISTEC_DB may itself carry query parameters; join accordingly
+      "sqlite3://#{db}#{db.includes?('?') ? '&' : '?'}#{DB_PARAMS}"
+    elsif ENV["KEMAL_ENV"]? == "production"
+      "sqlite3://#{File.expand_path("~/.ktistec.db", home: true)}?#{DB_PARAMS}"
+    else
+      "sqlite3://ktistec.db?#{DB_PARAMS}"
+    end
   end
 
   @@database : DB::Database = begin

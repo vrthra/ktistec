@@ -8,7 +8,7 @@ ready-to-apply patch, for review before we act on it.
 
 ## 1. Unbounded prepared-statement cache on the single long-lived DB connection
 
-**Status:** not yet applied
+**Status:** applied — `prepared_statements_cache=false` via `DB_PARAMS` in `src/framework/database.cr`
 **Area:** memory (steady-state, grows for the life of the process)
 **Files:** `src/framework/database.cr`
 
