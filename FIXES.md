@@ -441,4 +441,67 @@ also stall concurrent page reads. WAL alone may make this a non-issue.
 
 ---
 
+## 7. `reconcile-materialized-views` migration runs for days: stale planner statistics
+
+**Status:** applied — `ANALYZE` before the reconcile in
+`src/database/migrations/20260612215000-reconcile-materialized-views.cr`
+
+### The problem
+
+The one-time materialized-view cutover migration
+(`reconcile-materialized-views`, upstream `20260612215000`) ran for **more
+than 24 hours of CPU without completing** on a copy of the production
+database (3.8GB, 1.34M relationships, 1.46M activities, single account) —
+on a fast machine with the whole database in page cache. On production
+hardware (956MB RAM) the projected runtime was weeks.
+
+Per-statement timing of all 13 views' reconcile statements (90s cap)
+isolated the bomb: only `Timeline::Announce`'s INSERT and DELETE blew the
+cap; every other view finished in seconds.
+
+`EXPLAIN QUERY PLAN` showed why: `sqlite_stat1` on the production database
+contained just **two stale rows** (relationships row count claimed 608,244;
+actual 1,343,387 — the incremental `PRAGMA analysis_limit=400; PRAGMA
+optimize` run at connection close had only ever analyzed two indexes, and
+badly). With garbage stats, the planner anchored the view's correlated
+`NOT EXISTS` subquery on `idx_relationships_from_iri_type (from_iri=?,
+type=?)` — and on a single-account instance that arm matches the entire
+~1.1M-row Inbox, re-scanned **per announce activity** (~205k of them):
+~2×10¹¹ inner row visits.
+
+After a full `ANALYZE` (8s), the planner enters the same subquery via
+`idx_activities_object_iri` + `idx_relationships_to_iri` instead:
+
+| Measurement | before ANALYZE | after ANALYZE |
+|---|---|---|
+| `Timeline::Announce` membership query | >90s, capped (app: >24h) | **4.4s** |
+| Full 13-view reconcile + orphan deletes | never finished | **42.4s** |
+
+Verified end-to-end on an exact replica of the stuck state (same binary,
+same migration sequence, same SQLite 3.45.1 the static binary embeds),
+inside a rolled-back transaction so the rehearsal database stayed clean.
+
+### The fix
+
+One statement at the top of the migration's `up`: `db.exec "ANALYZE"`.
+Statistics persist in the database file, so the later
+`reconcile-public-tagged` migration inherits them too.
+
+### Related observations (not fixed here)
+
+- The connection-close `PRAGMA analysis_limit=400; PRAGMA optimize` in
+  `ext/sqlite3.cr` is what left the stats in this misleading state —
+  two partial rows are worse than none, because the planner trusts them.
+  A periodic full `ANALYZE` (e.g. in `Task::Performance`, hourly is
+  overkill — daily) would keep runtime plans honest as tables grow.
+  Worth considering as a follow-up; it also interacts with Fix #6
+  (the per-delivery reconciles use these same membership queries).
+- The maintainer's batch DELETE re-evaluates the membership query inside
+  a correlated `NOT EXISTS`. With good stats SQLite handles it; a
+  temp-table materialization would make the batch path robust to planner
+  regressions regardless of stats. Not needed once ANALYZE landed, but
+  the natural hardening if this ever recurs.
+
+---
+
 <!-- Next findings appended below as they're identified. -->
