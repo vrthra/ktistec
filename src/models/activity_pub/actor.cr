@@ -272,28 +272,38 @@ module ActivityPub
     # newest beats oldest, so a handle URL keeps resolving to the
     # record the rest of the site links to.
     #
+    # The two preferences run as two separate indexed lookups
+    # (idx_actors_verified_handle, idx_actors_username -- both
+    # NOCASE) rather than one OR: SQLite falls back to a full table
+    # scan when any OR arm is unindexable, and this lookup runs on
+    # every request for a handle-addressed page. The OR form measured
+    # 30 seconds over 460k actors; queries block the event loop, so
+    # that stalled the entire server per click.
+    #
     # The handle is validated against `VALID_HANDLE` up front, which
     # also guarantees the host is free of LIKE wildcards.
     #
     def self.find_by_handle?(handle : String)
       return nil unless handle.matches?(VALID_HANDLE)
-      username, _, host = handle.partition('@')
-      query = <<-QUERY
+      preference = "ORDER BY (a.deleted_at IS NULL) DESC, a.id DESC LIMIT 1"
+      verified = <<-QUERY
         SELECT #{Actor.columns(prefix: "a")}
           FROM actors AS a
-         WHERE (
-                 a.verified_handle = ? COLLATE NOCASE
-                 OR (
-                   a.username = ? COLLATE NOCASE
-                   AND (a.iri LIKE 'https://' || ? || '/%' OR a.iri LIKE 'http://' || ? || '/%')
-                 )
-               )
-      ORDER BY (a.verified_handle = ? COLLATE NOCASE) DESC,
-               (a.deleted_at IS NULL) DESC,
-               a.id DESC
-         LIMIT 1
+         WHERE a.verified_handle = ? COLLATE NOCASE
+        #{preference}
       QUERY
-      Actor.query_all(query, handle, username, host, host, handle).first?
+      if (actor = Actor.query_all(verified, handle).first?)
+        return actor
+      end
+      username, _, host = handle.partition('@')
+      derived = <<-QUERY
+        SELECT #{Actor.columns(prefix: "a")}
+          FROM actors AS a
+         WHERE a.username = ? COLLATE NOCASE
+           AND (a.iri LIKE 'https://' || ? || '/%' OR a.iri LIKE 'http://' || ? || '/%')
+        #{preference}
+      QUERY
+      Actor.query_all(derived, username, host, host).first?
     end
 
     def verify_handle!(deadline : Time::Instant? = nil)
