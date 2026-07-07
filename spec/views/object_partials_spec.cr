@@ -38,6 +38,10 @@ Spectator.describe "object partials" do
         expect(subject.xpath_nodes("//img/@src")).to contain_exactly(author.icon)
       end
 
+      it "links the icon to the author's profile on their instance" do
+        expect(subject.xpath_nodes("//a[img]/@href").map(&.text)).to contain_exactly(author.display_link.to_s)
+      end
+
       context "and the author is deleted" do
         before_each { author.delete! }
 
@@ -60,6 +64,10 @@ Spectator.describe "object partials" do
 
       it "renders two profile icons" do
         expect(subject.xpath_nodes("//img/@src")).to contain_exactly(actor.icon, author.icon)
+      end
+
+      it "links each icon to that actor's profile on their instance" do
+        expect(subject.xpath_nodes("//a[img]/@href").map(&.text)).to contain_exactly(actor.display_link.to_s, author.display_link.to_s)
       end
 
       context "and the actor is deleted" do
