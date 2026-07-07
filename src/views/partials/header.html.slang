@@ -19,10 +19,10 @@ nav.ui.top.fixed.inverted.navigation.menu data-turbo-prefetch="false"
     - elsif Account.count > 0
       a.item href=home_path
         i.home.icon
-        span.text Home
+        span.text Feed
       a.item href="https://rahul.gopinath.org"
         i.external.alternate.icon
-        span.text gopinath.org
+        span.text rahul.gopinath.org
       .right.menu
         a.item href=sessions_path Sign In
     - else
