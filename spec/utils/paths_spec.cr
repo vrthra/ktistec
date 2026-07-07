@@ -28,6 +28,16 @@ Spectator.describe Utils::Paths do
     stub def iri
       "/xyz"
     end
+
+    stub def path_id
+      "42"
+    end
+  end
+
+  double :handle_double do
+    stub def path_id
+      "leanpub@mastodon.social"
+    end
   end
 
   double :feed_double do
@@ -642,6 +652,14 @@ Spectator.describe Utils::Paths do
 
       it "gets the remote actor path" do
         expect((remote_actor_path(actor)).to_s).to eq("/remote/actors/42")
+      end
+    end
+
+    context "given an actor with a handle" do
+      let(actor) { double(:handle_double) }
+
+      it "gets the handle-based remote actor path" do
+        expect((remote_actor_path(actor)).to_s).to eq("/remote/actors/leanpub@mastodon.social")
       end
     end
 

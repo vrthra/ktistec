@@ -317,11 +317,16 @@ module Utils::Paths
     ::Ktistec::SafeURI.assert_safe("#{Utils::Paths.remote_object_path({{object}})}/translation/clear")
   end
 
+  # Emits the actor's handle (see `Actor#path_id`) so links read
+  # `/remote/actors/user@host` when possible. `@` is a legal path
+  # character (RFC 3986 pchar) restored after encoding; the routes
+  # accept both the handle and the numeric-id form.
+  #
   macro remote_actor_path(actor = nil)
     {% if actor %}
-      ::Ktistec::SafeURI.assert_safe("/remote/actors/#{::URI.encode_path_segment({{actor}}.id.to_s)}")
+      ::Ktistec::SafeURI.assert_safe("/remote/actors/#{::URI.encode_path_segment({{actor}}.path_id).gsub("%40", "@")}")
     {% else %}
-      ::Ktistec::SafeURI.assert_safe("/remote/actors/#{::URI.encode_path_segment(env.params.url["id"])}")
+      ::Ktistec::SafeURI.assert_safe("/remote/actors/#{::URI.encode_path_segment(env.params.url["id"]).gsub("%40", "@")}")
     {% end %}
   end
 

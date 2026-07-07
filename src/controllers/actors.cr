@@ -46,6 +46,20 @@ class ActorsController
     ActivityPub::Actor.find?(id)
   end
 
+  # Returns the remote/cached actor identified by the `id` URL
+  # parameter, which is either a numeric id or a `username@host`
+  # handle (the form `remote_actor_path` emits -- see
+  # `Actor#path_id`).
+  #
+  private def self.get_remote_actor(env)
+    id = env.params.url["id"]
+    if id.includes?('@')
+      ActivityPub::Actor.find_by_handle?(id)
+    elsif (numeric = id.to_i64?)
+      get_actor(numeric)
+    end
+  end
+
   # these actions render views about local actors for both anonymous
   # and authenticated users.
 
@@ -214,7 +228,7 @@ class ActorsController
   # actors for authenticated users.
 
   get "/remote/actors/:id" do |env|
-    unless (actor = get_actor(id_param(env)))
+    unless (actor = get_remote_actor(env))
       not_found
     end
 
@@ -232,7 +246,7 @@ class ActorsController
   # require per-user blocking relationships.
 
   post "/remote/actors/:id/block" do |env|
-    unless (actor = ActivityPub::Actor.find?(id_param(env)))
+    unless (actor = get_remote_actor(env))
       not_found
     end
 
@@ -242,7 +256,7 @@ class ActorsController
   end
 
   post "/remote/actors/:id/unblock" do |env|
-    unless (actor = ActivityPub::Actor.find?(id_param(env)))
+    unless (actor = get_remote_actor(env))
       not_found
     end
 
@@ -252,7 +266,7 @@ class ActorsController
   end
 
   post "/remote/actors/:id/refresh" do |env|
-    unless (actor = get_actor(id_param(env)))
+    unless (actor = get_remote_actor(env))
       not_found
     end
 

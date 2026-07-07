@@ -389,6 +389,16 @@ Spectator.describe Ktistec::HTML do
         content = %Q|<p><a href="#{Ktistec.host}/remote/actors/#{actor.id}">link</a></p>|
         expect(described_class.enhance(content).content).to eq(%Q|<p><a href="#{actor.iri}">link</a></p>|)
       end
+
+      it "converts handle-addressed internal links to external links" do
+        content = %Q|<p><a href="/remote/actors/#{actor.path_id}">link</a></p>|
+        expect(described_class.enhance(content).content).to eq(%Q|<p><a href="#{URI.parse(actor.iri).path}">link</a></p>|)
+      end
+
+      it "does not raise on a malformed id segment" do
+        content = %Q|<p><a href="/remote/actors/not-an-id">link</a></p>|
+        expect(described_class.enhance(content).content).to eq(content)
+      end
     end
 
     context "links to remote objects/actors" do

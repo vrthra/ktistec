@@ -77,11 +77,23 @@ module Ktistec
           unless parts.size == 4
             next
           end
-          id = parts[3].to_i64
+          # the actor segment is either a numeric id or a
+          # `username@host` handle (see `Actor#path_id`); a segment
+          # that is neither must not raise -- content enhancement
+          # runs on every composed post
+          id = parts[3]
           instance =
             case parts[2]
-            when "actors"  then ActivityPub::Actor.find?(id)
-            when "objects" then ActivityPub::Object.find?(id)
+            when "actors"
+              if id.includes?('@')
+                ActivityPub::Actor.find_by_handle?(id)
+              elsif (numeric = id.to_i64?)
+                ActivityPub::Actor.find?(numeric)
+              end
+            when "objects"
+              if (numeric = id.to_i64?)
+                ActivityPub::Object.find?(numeric)
+              end
             end
           if instance && instance.local?
             if uri.host

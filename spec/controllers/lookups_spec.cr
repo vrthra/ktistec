@@ -30,7 +30,7 @@ Spectator.describe LookupsController do
       it "redirects to the actor" do
         get "/lookup/actor?iri=#{URI.encode_path(actor.iri)}"
         expect(response.status_code).to eq(302)
-        expect(response.headers["Location"]).to eq("/remote/actors/#{actor.id}")
+        expect(response.headers["Location"]).to eq("/remote/actors/#{actor.path_id}")
       end
     end
   end

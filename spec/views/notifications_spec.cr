@@ -244,7 +244,7 @@ Spectator.describe "notifications partial" do
 
       it "displays the actor who quoted" do
         expect(subject.xpath_nodes("//article[contains(@class,'event')]//a/@href").first.text)
-          .to eq("/remote/actors/#{quoting_actor.id}")
+          .to eq("/remote/actors/#{quoting_actor.path_id}")
       end
 
       it "links to the quoted post" do

@@ -250,6 +250,52 @@ module ActivityPub
 
     VALID_HANDLE = /\A[a-zA-Z0-9_.~-]+@[a-zA-Z0-9.-]+\z/
 
+    # Returns the path segment identifying this actor in local
+    # `/remote/actors/...` URLs.
+    #
+    # Prefers the textual handle -- stable across database rebuilds
+    # and meaningful to humans -- when it is well-formed; falls back
+    # to the numeric id otherwise (missing username, blocked actor,
+    # etc.). Every character `VALID_HANDLE` admits is legal in a URL
+    # path segment, `@` included.
+    #
+    def path_id
+      (h = handle).matches?(VALID_HANDLE) ? h : id.to_s
+    end
+
+    # Finds a cached actor by its `username@host` handle.
+    #
+    # Prefers an exact `verified_handle` match. Otherwise candidates
+    # are derived from `username` plus the host of the actor's IRI.
+    # If several actors share the handle (e.g. stale records left
+    # behind by a server migration), undeleted beats deleted and
+    # newest beats oldest, so a handle URL keeps resolving to the
+    # record the rest of the site links to.
+    #
+    # The handle is validated against `VALID_HANDLE` up front, which
+    # also guarantees the host is free of LIKE wildcards.
+    #
+    def self.find_by_handle?(handle : String)
+      return nil unless handle.matches?(VALID_HANDLE)
+      username, _, host = handle.partition('@')
+      query = <<-QUERY
+        SELECT #{Actor.columns(prefix: "a")}
+          FROM actors AS a
+         WHERE (
+                 a.verified_handle = ? COLLATE NOCASE
+                 OR (
+                   a.username = ? COLLATE NOCASE
+                   AND (a.iri LIKE 'https://' || ? || '/%' OR a.iri LIKE 'http://' || ? || '/%')
+                 )
+               )
+      ORDER BY (a.verified_handle = ? COLLATE NOCASE) DESC,
+               (a.deleted_at IS NULL) DESC,
+               a.id DESC
+         LIMIT 1
+      QUERY
+      Actor.query_all(query, handle, username, host, host, handle).first?
+    end
+
     def verify_handle!(deadline : Time::Instant? = nil)
       if (claimed = webfinger.presence)
         if claimed.matches?(VALID_HANDLE)

@@ -2611,6 +2611,59 @@ Spectator.describe ActivityPub::Actor do
     end
   end
 
+  describe "#path_id" do
+    it "returns the handle when it is well-formed" do
+      expect(described_class.new(iri: "https://mastodon.social/users/leanpub", username: "leanpub").save.path_id).to eq("leanpub@mastodon.social")
+    end
+
+    it "returns the id when the username is missing" do
+      actor = described_class.new(iri: "https://remote/actors/#{random_string}").save
+      expect(actor.path_id).to eq(actor.id.to_s)
+    end
+
+    it "returns the id when the actor is blocked" do
+      actor = described_class.new(iri: "https://remote/actors/#{random_string}", username: "foobar", blocked_at: Time.utc).save
+      expect(actor.path_id).to eq(actor.id.to_s)
+    end
+  end
+
+  describe ".find_by_handle?" do
+    let!(actor) { described_class.new(iri: "https://mastodon.social/users/leanpub", username: "leanpub").save }
+
+    it "finds an actor by username and host" do
+      expect(described_class.find_by_handle?("leanpub@mastodon.social")).to eq(actor)
+    end
+
+    it "matches case-insensitively" do
+      expect(described_class.find_by_handle?("LeanPub@Mastodon.Social")).to eq(actor)
+    end
+
+    it "finds an actor by its verified handle" do
+      actor.assign(verified_handle: "verified@example.com").save
+      expect(described_class.find_by_handle?("verified@example.com")).to eq(actor)
+    end
+
+    it "prefers a verified handle match over a derived one" do
+      other = described_class.new(iri: "https://example.com/users/verified", username: "verified").save
+      actor.assign(verified_handle: "verified@example.com").save
+      expect(described_class.find_by_handle?("verified@example.com")).to eq(actor)
+      expect(other).not_to be_nil # silence unused warning
+    end
+
+    it "prefers the newest of duplicate handles" do
+      newer = described_class.new(iri: "https://mastodon.social/actors/leanpub", username: "leanpub").save
+      expect(described_class.find_by_handle?("leanpub@mastodon.social")).to eq(newer)
+    end
+
+    it "returns nil for an unknown handle" do
+      expect(described_class.find_by_handle?("nobody@nowhere.example")).to be_nil
+    end
+
+    it "returns nil for a malformed handle" do
+      expect(described_class.find_by_handle?("not a handle")).to be_nil
+    end
+  end
+
   describe "#verify_handle!" do
     context "when the claimed handle resolves to the actor" do
       let(claimed) { "alice@example.com" }

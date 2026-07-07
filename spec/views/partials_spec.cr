@@ -365,7 +365,7 @@ Spectator.describe "partials" do
 
     context "if anonymous" do
       it "does not render an internal link to the actor" do
-        expect(subject.xpath_nodes("//a/@href")).not_to have("/remote/actors/#{actor.id}")
+        expect(subject.xpath_nodes("//a/@href")).not_to have("/remote/actors/#{actor.path_id}")
       end
 
       it "does not render buttons" do
@@ -396,7 +396,7 @@ Spectator.describe "partials" do
       sign_in(as: account.username)
 
       it "renders an internal link to the actor" do
-        expect(subject.xpath_nodes("//a/@href")).to have("/remote/actors/#{actor.id}")
+        expect(subject.xpath_nodes("//a/@href")).to have("/remote/actors/#{actor.path_id}")
       end
 
       context "and account actor is actor" do
@@ -684,7 +684,7 @@ Spectator.describe "partials" do
 
     context "if anonymous" do
       it "does not render an internal link to the actor" do
-        expect(subject.xpath_nodes("//a/@href")).not_to have("/remote/actors/#{actor.id}")
+        expect(subject.xpath_nodes("//a/@href")).not_to have("/remote/actors/#{actor.path_id}")
       end
 
       it "does not render buttons" do
@@ -728,7 +728,7 @@ Spectator.describe "partials" do
       sign_in(as: account.username)
 
       it "renders an internal link to the actor" do
-        expect(subject.xpath_nodes("//a/@href")).to have("/remote/actors/#{actor.id}")
+        expect(subject.xpath_nodes("//a/@href")).to have("/remote/actors/#{actor.path_id}")
       end
 
       context "if account actor is actor" do

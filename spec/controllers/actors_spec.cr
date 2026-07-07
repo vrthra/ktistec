@@ -1042,13 +1042,24 @@ Spectator.describe ActorsController do
       it "renders the actor" do
         get "/remote/actors/#{actor.id}", ACCEPT_HTML
         expect(response.status_code).to eq(200)
-        expect(XML.parse_html(response.body).xpath_nodes("//*[contains(@class,'segment')]/a[contains(@href,'/remote/actors/#{actor.id}')]/text()").first).to eq(actor.display_name)
+        expect(XML.parse_html(response.body).xpath_nodes("//*[contains(@class,'segment')]/a[contains(@href,'/remote/actors/#{actor.path_id}')]/text()").first).to eq(actor.display_name)
       end
 
       it "renders the actor" do
         get "/remote/actors/#{actor.id}", ACCEPT_JSON
         expect(response.status_code).to eq(200)
         expect(JSON.parse(response.body).dig("id")).to eq(actor.iri)
+      end
+
+      it "renders the actor addressed by handle" do
+        get "/remote/actors/#{actor.path_id}", ACCEPT_HTML
+        expect(response.status_code).to eq(200)
+        expect(XML.parse_html(response.body).xpath_nodes("//*[contains(@class,'segment')]/a[contains(@href,'/remote/actors/#{actor.path_id}')]/text()").first).to eq(actor.display_name)
+      end
+
+      it "returns 404 for an unknown handle" do
+        get "/remote/actors/nobody@nowhere.example", ACCEPT_HTML
+        expect(response.status_code).to eq(404)
       end
     end
   end
