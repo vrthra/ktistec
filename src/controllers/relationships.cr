@@ -33,13 +33,36 @@ class RelationshipsController
     end
   end
 
+  # Returns the validated regular expression search parameter and an
+  # error message, at most one of which is non-nil.
+  #
+  # The pattern must be proven to compile here: the sqlite3 shard's
+  # `regexp` SQL function compiles it inside a C callback, where a
+  # raised exception cannot safely unwind. Matching is made
+  # case-insensitive by default with an inline `(?i)` flag -- a
+  # pattern can override with `(?-i)`.
+  #
+  private def self.search_param(env) : {String?, String?}
+    if (pattern = env.params.query["search"]?.presence)
+      begin
+        Regex.new(pattern)
+        {"(?i)#{pattern}", nil}
+      rescue ex : ArgumentError
+        {nil, "invalid regular expression: #{ex.message}"}
+      end
+    else
+      {nil, nil}
+    end
+  end
+
   get "/actors/:username/following" do |env|
     unless (account = get_account(env))
       gone
     end
 
-    related = account.actor.all_following(**cursor_pagination_params(env), public: env.account? != account)
-    ok "relationships/actors", env: env, related: related, title: "Following"
+    search, search_error = search_param(env)
+    related = account.actor.all_following(**cursor_pagination_params(env), public: env.account? != account, search: search)
+    ok "relationships/actors", env: env, related: related, title: "Following", search: env.params.query["search"]?, search_error: search_error
   end
 
   get "/actors/:username/followers" do |env|
@@ -47,8 +70,9 @@ class RelationshipsController
       gone
     end
 
-    related = account.actor.all_followers(**cursor_pagination_params(env), public: env.account? != account)
-    ok "relationships/actors", env: env, related: related, title: "Followers"
+    search, search_error = search_param(env)
+    related = account.actor.all_followers(**cursor_pagination_params(env), public: env.account? != account, search: search)
+    ok "relationships/actors", env: env, related: related, title: "Followers", search: env.params.query["search"]?, search_error: search_error
   end
 
   get "/actors/:username/likes" do |env|

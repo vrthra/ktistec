@@ -890,6 +890,29 @@ Spectator.describe ActivityPub::Actor do
       following1.block!
       expect(subject.all_following(public: true, limit: 10)).not_to contain(following1)
     end
+
+    context "with a search pattern" do
+      let(alice) { described_class.new(iri: "https://remote.example/actors/alice", username: "alice", name: "Alice A").save }
+      let(bob) { described_class.new(iri: "https://other.example/actors/bob", username: "bob", name: "Robert").save }
+      let!(follow_alice) { subject.follow(alice, confirmed: true, visible: true).save }
+      let!(follow_bob) { subject.follow(bob, confirmed: true, visible: true).save }
+
+      it "filters by username" do
+        expect(subject.all_following(public: true, limit: 10, search: "^alice$")).to eq([alice])
+      end
+
+      it "filters by display name" do
+        expect(subject.all_following(public: true, limit: 10, search: "Robert")).to eq([bob])
+      end
+
+      it "filters by IRI" do
+        expect(subject.all_following(public: true, limit: 10, search: "remote\\.example")).to eq([alice])
+      end
+
+      it "returns nothing when the pattern matches no one" do
+        expect(subject.all_following(public: true, limit: 10, search: "doesnotmatchanyone")).to be_empty
+      end
+    end
   end
 
   describe "#all_followers" do
@@ -942,6 +965,19 @@ Spectator.describe ActivityPub::Actor do
     it "excludes blocked actors" do
       follower1.block!
       expect(subject.all_followers(public: true, limit: 10)).not_to contain(follower1)
+    end
+
+    context "with a search pattern" do
+      let(alice) { described_class.new(iri: "https://remote.example/actors/alice", username: "alice", name: "Alice A").save }
+      let!(follow_alice) { alice.follow(subject, confirmed: true, visible: true).save }
+
+      it "filters by username" do
+        expect(subject.all_followers(public: true, limit: 10, search: "^alice$")).to eq([alice])
+      end
+
+      it "returns nothing when the pattern matches no one" do
+        expect(subject.all_followers(public: true, limit: 10, search: "doesnotmatchanyone")).to be_empty
+      end
     end
   end
 

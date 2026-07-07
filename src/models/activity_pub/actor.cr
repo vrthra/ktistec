@@ -347,8 +347,20 @@ module ActivityPub
       !other.deleted? && !other.blocked? ? Relationship::Social::Follow.find?(**options.merge({actor: self, object: other})) : nil
     end
 
-    private def social_cursor_query(type, orig, dest, public = true)
+    # The `search` condition matches a regular expression against the
+    # actor's username, display name, and IRI, via the `regexp` SQL
+    # function the sqlite3 shard registers on every connection. The
+    # pattern is bound (never interpolated); callers must validate it
+    # compiles (`Regex.new`) before passing it in -- the shard's
+    # `regexp` implementation compiles the pattern inside a C callback
+    # where a raised exception cannot safely unwind. `coalesce`
+    # guards nullable columns for the same reason: the callback calls
+    # `String.new` on the value, and SQL NULL arrives as a null
+    # pointer.
+    #
+    private def social_cursor_query(type, orig, dest, public = true, search : String? = nil)
       public = public ? "AND r.confirmed = 1 AND r.visible = 1" : nil
+      search = search ? "AND (coalesce(a.username, '') REGEXP ? OR coalesce(a.name, '') REGEXP ? OR coalesce(a.iri, '') REGEXP ?)" : nil
       <<-QUERY
         SELECT #{Actor.columns(prefix: "a")}
           FROM actors AS a, relationships AS r
@@ -357,20 +369,25 @@ module ActivityPub
            AND r.type = '#{type}'
            AND r.#{dest} = ?
            #{public}
+           #{search}
            AND %{cursor_condition}
       QUERY
     end
 
-    def all_following(*, max_id = nil, min_id = nil, limit = 10, public = true)
+    def all_following(*, max_id = nil, min_id = nil, limit = 10, public = true, search : String? = nil)
+      args = Array(DB::Any){self.iri}
+      args.concat([search, search, search] of DB::Any) if search
       Actor.query_with_cursor(
-        social_cursor_query(Relationship::Social::Follow, :to_iri, :from_iri, public),
-        self.iri, cursor_column: "a.id", max_id: max_id, min_id: min_id, limit: limit)
+        social_cursor_query(Relationship::Social::Follow, :to_iri, :from_iri, public, search),
+        cursor_column: "a.id", max_id: max_id, min_id: min_id, limit: limit, args: args)
     end
 
-    def all_followers(*, max_id = nil, min_id = nil, limit = 10, public = false)
+    def all_followers(*, max_id = nil, min_id = nil, limit = 10, public = false, search : String? = nil)
+      args = Array(DB::Any){self.iri}
+      args.concat([search, search, search] of DB::Any) if search
       Actor.query_with_cursor(
-        social_cursor_query(Relationship::Social::Follow, :from_iri, :to_iri, public),
-        self.iri, cursor_column: "a.id", max_id: max_id, min_id: min_id, limit: limit)
+        social_cursor_query(Relationship::Social::Follow, :from_iri, :to_iri, public, search),
+        cursor_column: "a.id", max_id: max_id, min_id: min_id, limit: limit, args: args)
     end
 
     def all_follow_requests(*, max_id = nil, min_id = nil, limit = 10)
