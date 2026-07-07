@@ -6,5 +6,7 @@
 /public/uploads/*
 !/public/uploads/.keep
 ktistec.db
+ktistec.db-wal
+ktistec.db-shm
 server.dwarf
 server
