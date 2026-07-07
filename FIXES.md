@@ -1,8 +1,8 @@
 # FIXES.md
 
-Running list of identified issues and proposed patches. Nothing here has been
-applied to the source tree or committed — each entry is a writeup plus a
-ready-to-apply patch, for review before we act on it.
+Running list of identified issues and proposed patches. Entries marked
+"applied" have been committed (see each entry's Status line); the rest are
+writeups awaiting design, profiling, or review.
 
 ---
 
@@ -501,6 +501,47 @@ Statistics persist in the database file, so the later
   temp-table materialization would make the batch path robust to planner
   regressions regardless of stats. Not needed once ANALYZE landed, but
   the natural hardening if this ever recurs.
+
+---
+
+## 8. `ReconcileTagStatistics` full-scans a million tags every 12 hours, starving the event loop
+
+**Status:** observation — no patch yet; observed live during the 2026-07-07
+production cutover
+
+### The problem
+
+`Task::ReconcileTagStatistics` (new upstream feature) recounts **every
+tracked tag** on every run: a windowed scan (window = 500 rows,
+`Tag.reconcile_window_size`) over the full `tags` table with per-row
+LEFT JOINs into `objects` and `actors`. On the production instance that
+is ~1.09M tag rows (768k mentions + 321k hashtags) doing random point
+reads across a 3.8GB database on a 956MB host — the first post-upgrade
+run read >12GB from disk in its first ten minutes.
+
+Two compounding effects on constrained hardware:
+
+1. **Event-loop starvation.** Crystal is single-threaded; each window
+   query is a blocking C call into SQLite, so while a window runs *no*
+   fiber runs — including the HTTP accept loop. During the initial
+   reconcile the site timed out (>15s) even though the process was
+   healthy. The keyset cursor guarantees forward progress, but
+   interactivity only returns between windows.
+2. **It reruns in full every 12 hours** (`randomized_next_attempt_at`).
+   The scan is a recount-from-truth, not incremental over changes, so
+   steady-state cost equals first-run cost as the tags table grows.
+
+### Possible directions (needs upstream-minded design)
+
+- Shrink `reconcile_window_size` on small hosts (class property; not
+  currently exposed via env/settings) — trades total runtime for
+  interactivity between windows.
+- Schedule at a longer interval and/or detect "no drift since last run"
+  cheaply (e.g. compare `max(tags.id)` + counts by type) before paying
+  for a full recount.
+- The underlying drift being healed comes from `#update_count`; if
+  drift sources were transactional, the reconcile could be a rare
+  consistency check instead of a 12-hourly rebuild.
 
 ---
 
