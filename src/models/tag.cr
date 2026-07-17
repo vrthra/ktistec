@@ -219,6 +219,14 @@ class Tag
         end
       end
       break if rows < window_size
+      # Each window is one blocking C call into SQLite; on hosts where
+      # the database dwarfs RAM a window costs ~a second of cold random
+      # reads, and back-to-back windows starve every other fiber --
+      # including HTTP accept -- for the entire recount (observed in
+      # production: ~40 minutes of nginx 504s, twice a day; FIXES.md
+      # #8). Yielding between windows caps request latency at a single
+      # window instead.
+      Fiber.yield
     end
     if (closed = open_key) && open_iris.size > 0
       truth[closed] = {open_name, open_iris.size.to_i64}

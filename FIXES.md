@@ -506,8 +506,15 @@ Statistics persist in the database file, so the later
 
 ## 8. `ReconcileTagStatistics` full-scans a million tags every 12 hours, starving the event loop
 
-**Status:** observation — no patch yet; observed live during the 2026-07-07
-production cutover
+**Status:** mitigated — `Fiber.yield` between scan windows in
+`Tag.reconcile_statistics` (`src/models/tag.cr`). Confirmed as the cause of
+recurring production outages (2026-07-17: site returned 504s for ~40
+minutes while the task ran; caught live with the task's `running=1` and a
+20s front-page timeout). The yield caps request latency at one window
+(~1s on production hardware) instead of the whole recount. The recount's
+total I/O cost (full scan of ~1.1M tags with per-row object/actor lookups,
+twice daily) still stands — the "cheap no-drift skip" and interval ideas
+below remain open.
 
 ### The problem
 
