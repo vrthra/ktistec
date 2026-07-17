@@ -506,8 +506,12 @@ Statistics persist in the database file, so the later
 
 ## 8. `ReconcileTagStatistics` full-scans a million tags every 12 hours, starving the event loop
 
-**Status:** mitigated — `Fiber.yield` between scan windows in
-`Tag.reconcile_statistics` (`src/models/tag.cr`). Confirmed as the cause of
+**Status:** mitigated and verified — `Fiber.yield` between scan windows in
+`Tag.reconcile_statistics` (`src/models/tag.cr`). Production verification
+2026-07-17: during a full cold-cache recount (20:02–20:21 UTC, 19 minutes),
+480 front-page probes at 10s intervals all returned HTTP 200, worst latency
+3.6s, no 504s at nginx — versus 99 × 504 during that morning's recount on
+the previous binary. Confirmed as the cause of
 recurring production outages (2026-07-17: site returned 504s for ~40
 minutes while the task ran; caught live with the task's `running=1` and a
 20s front-page timeout). The yield caps request latency at one window
