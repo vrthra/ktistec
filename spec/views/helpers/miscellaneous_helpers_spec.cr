@@ -11,10 +11,19 @@ Spectator.describe "helpers" do
 
   describe ".content_html" do
     let_create(:object)
-    let_create!(:mention, named: nil, subject: object, name: "alice@remote.example", href: "https://remote.example/@alice")
+    # the tag href is the actor's ActivityPub id; the anchor in the
+    # content points at the actor's profile URL (the Mastodon shape)
+    let_create!(:mention, named: nil, subject: object, name: "alice@remote.example", href: "https://remote.example/users/alice")
+    let_create!(:actor, named: :alice, iri: "https://remote.example/users/alice", urls: ["https://remote.example/@alice"])
     let(account) { register }
 
     let(content) { %q|<p>hi <a href="https://remote.example/@alice" class="mention">@alice</a>!</p>| }
+
+    it "localizes an anchor matching the mention href itself" do
+      direct = %q|<p><a href="https://remote.example/users/alice">@alice</a></p>|
+      html = self.class.content_html(direct, object, account).to_s
+      expect(html).to contain(%q|href="/remote/actors/alice@remote.example"|)
+    end
 
     it "localizes mention links for signed-in viewers" do
       html = self.class.content_html(content, object, account).to_s

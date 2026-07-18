@@ -140,12 +140,20 @@ module Ktistec::ViewHelper
       return html unless content.presence
       mentions = object.mentions
       return html if mentions.empty?
+      # A mention tag's href is the actor's ActivityPub id, but the
+      # anchor embedded in the content usually points at the actor's
+      # *profile URL* (Mastodon: /users/name vs /@name), so the map
+      # must cover both: the tag href itself, plus the cached actor's
+      # declared urls.
       handles_by_href = {} of String => String
       mentions.each do |mention|
         if (href = mention.href.presence)
           name = mention.name.lstrip('@')
           if name.matches?(::ActivityPub::Actor::VALID_HANDLE)
             handles_by_href[href] = name
+            if (mentioned = ::ActivityPub::Actor.find?(href)) && (urls = mentioned.urls)
+              urls.each { |url| handles_by_href[url] = name }
+            end
           end
         end
       end
