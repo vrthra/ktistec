@@ -1057,8 +1057,14 @@ Spectator.describe ActorsController do
         expect(XML.parse_html(response.body).xpath_nodes("//*[contains(@class,'segment')]/a[contains(@href,'/remote/actors/#{actor.path_id}')]/text()").first).to eq(actor.display_name)
       end
 
-      it "returns 404 for an unknown handle" do
+      it "redirects an unknown handle to search" do
         get "/remote/actors/nobody@nowhere.example", ACCEPT_HTML
+        expect(response.status_code).to eq(302)
+        expect(response.headers["Location"]).to eq("/search?query=nobody%40nowhere.example")
+      end
+
+      it "returns 404 for an unknown numeric id" do
+        get "/remote/actors/999999999", ACCEPT_HTML
         expect(response.status_code).to eq(404)
       end
     end

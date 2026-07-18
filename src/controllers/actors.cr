@@ -229,6 +229,14 @@ class ActorsController
 
   get "/remote/actors/:id" do |env|
     unless (actor = get_remote_actor(env))
+      # a handle-addressed miss is a well-formed reference to an actor
+      # this server has simply never cached (e.g. a localized mention
+      # of someone the user has never interacted with). hand it to
+      # search, which resolves handles via WebFinger, instead of
+      # dead-ending at 404.
+      if (id = env.params.url["id"]).includes?('@')
+        redirect "/search?query=#{URI.encode_www_form(id)}"
+      end
       not_found
     end
 

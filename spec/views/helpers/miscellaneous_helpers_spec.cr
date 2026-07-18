@@ -9,6 +9,39 @@ Spectator.describe "helpers" do
     XML::HTMLParserOptions::NOIMPLIED |
       XML::HTMLParserOptions::NODEFDTD
 
+  describe ".content_html" do
+    let_create(:object)
+    let_create!(:mention, named: nil, subject: object, name: "alice@remote.example", href: "https://remote.example/@alice")
+    let(account) { register }
+
+    let(content) { %q|<p>hi <a href="https://remote.example/@alice" class="mention">@alice</a>!</p>| }
+
+    it "localizes mention links for signed-in viewers" do
+      html = self.class.content_html(content, object, account).to_s
+      expect(html).to contain(%q|href="/remote/actors/alice@remote.example"|)
+      expect(html).to contain(%q|data-turbo-frame="_top"|)
+      expect(html).not_to contain("_blank")
+    end
+
+    it "leaves mention links alone for anonymous viewers" do
+      html = self.class.content_html(content, object, nil).to_s
+      expect(html).to contain(%q|href='https://remote.example/@alice'|)
+    end
+
+    it "leaves anchors that do not match a mention alone" do
+      other = %q|<p><a href="https://elsewhere.example/page">link</a></p>|
+      html = self.class.content_html(other, object, account).to_s
+      expect(html).to contain(%q|href='https://elsewhere.example/page'|)
+    end
+
+    it "preserves the rest of the content" do
+      html = self.class.content_html(content, object, account).to_s
+      expect(html).to contain("hi ")
+      expect(html).to contain("@alice")
+      expect(html).to contain("!")
+    end
+  end
+
   describe ".activity_status" do
     it "is :none" do
       expect(self.class.activity_status(nil)).to eq(:none)

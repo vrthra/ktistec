@@ -14,7 +14,7 @@ crystal:
 - partial "partials/object/content/attachments"
 - if with_detail
   div.extra.text
-    = emoji_html(html, object, emojis: object_emojis)
+    = content_html(html, object, account, emojis: object_emojis)
   - if object.quote_iri
     crystal:
       quote = object.quote?
@@ -25,7 +25,7 @@ crystal:
     - partial "partials/object/content/poll"
 - else
   div.extra.text data-controller="clickable-background" data-clickable-background-href-value=href
-    = emoji_html(html, object, emojis: object_emojis)
+    = content_html(html, object, account, emojis: object_emojis)
   - if object.quote_iri
     crystal:
       quote = object.quote?

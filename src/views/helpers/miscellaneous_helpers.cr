@@ -117,6 +117,70 @@ module Ktistec::ViewHelper
       ::Ktistec::Util.sanitize(::Ktistec::Emoji.emojify(content, emojis))
     end
 
+    # Renders object content with mention links localized.
+    #
+    # Mention anchors arrive embedded in federated HTML pointing
+    # wherever the author's instance chose -- usually the actor's
+    # remote profile. For signed-in viewers, rewrite each anchor
+    # whose href matches one of the object's mention tags to this
+    # server's /remote/actors/<handle> page instead. Handles are
+    # checked against `Actor::VALID_HANDLE` before use, so only
+    # well-formed user@host names are ever emitted into an href.
+    #
+    # Runs on the *sanitized* output: the rewritten links are
+    # relative, so they need `data-turbo-frame="_top"` to escape the
+    # post's enclosing turbo-frame, and `sanitize`'s attribute
+    # allowlist would strip that attribute if it were added earlier
+    # in the pipeline. Anonymous viewers keep the original remote
+    # links -- the local page requires authentication.
+    #
+    def content_html(content, object, account, *, emojis = nil) : ::Ktistec::SafeHTML
+      html = emoji_html(content, object, emojis: emojis)
+      return html unless account
+      return html unless content.presence
+      mentions = object.mentions
+      return html if mentions.empty?
+      handles_by_href = {} of String => String
+      mentions.each do |mention|
+        if (href = mention.href.presence)
+          name = mention.name.lstrip('@')
+          if name.matches?(::ActivityPub::Actor::VALID_HANDLE)
+            handles_by_href[href] = name
+          end
+        end
+      end
+      return html if handles_by_href.empty?
+      xml = XML.parse_html("<div>#{html}</div>",
+        XML::HTMLParserOptions::RECOVER |
+        XML::HTMLParserOptions::NODEFDTD |
+        XML::HTMLParserOptions::NOIMPLIED |
+        XML::HTMLParserOptions::NOERROR |
+        XML::HTMLParserOptions::NOWARNING |
+        XML::HTMLParserOptions::NONET,
+      )
+      changed = false
+      xml.xpath_nodes("//a[@href]").each do |anchor|
+        if (name = handles_by_href[anchor["href"]]?)
+          anchor["href"] = "/remote/actors/#{name}"
+          anchor["data-turbo-frame"] = "_top"
+          # sanitize decorates external links with target/rel; both
+          # are wrong on a link that is now internal
+          anchor.delete("target")
+          anchor.delete("rel")
+          changed = true
+        end
+      end
+      return html unless changed
+      result = String.build do |build|
+        if (div = xml.xpath_node("//div"))
+          div.children.each do |child|
+            child.to_xml(build, options: XML::SaveOptions::AS_HTML)
+          end
+        end
+      end
+      ::Ktistec::SafeHTML.assert_safe(result)
+    end
+
     # Returns the footer.
     #
     def footer_html : ::Ktistec::SafeHTML
