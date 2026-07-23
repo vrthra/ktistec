@@ -1,4 +1,5 @@
 require "markd"
+require "uri"
 
 require "../../safe/safe_html"
 
@@ -146,6 +147,14 @@ module Ktistec::ViewHelper
       # must cover both: the tag href itself, plus the cached actor's
       # declared urls.
       handles_by_href = {} of String => String
+      # Most mentioned actors were never fetched by this server (a
+      # post can @-mention someone nobody local follows), so there's
+      # no cached `urls` to supply the alias above. Fall back to
+      # matching by host + trailing path segment against the tag's
+      # `user@host` name -- this catches the common `/@user`
+      # profile-URL shape (and similar single-segment forms) without
+      # a network fetch.
+      handles_by_host_and_segment = {} of {String, String} => String
       mentions.each do |mention|
         if (href = mention.href.presence)
           name = mention.name.lstrip('@')
@@ -154,10 +163,12 @@ module Ktistec::ViewHelper
             if (mentioned = ::ActivityPub::Actor.find?(href)) && (urls = mentioned.urls)
               urls.each { |url| handles_by_href[url] = name }
             end
+            local, host = name.split('@', 2)
+            handles_by_host_and_segment[{host.downcase, local.downcase}] = name
           end
         end
       end
-      return html if handles_by_href.empty?
+      return html if handles_by_href.empty? && handles_by_host_and_segment.empty?
       xml = XML.parse_html("<div>#{html}</div>",
         XML::HTMLParserOptions::RECOVER |
         XML::HTMLParserOptions::NODEFDTD |
@@ -168,7 +179,14 @@ module Ktistec::ViewHelper
       )
       changed = false
       xml.xpath_nodes("//a[@href]").each do |anchor|
-        if (name = handles_by_href[anchor["href"]]?)
+        href = anchor["href"]
+        name = handles_by_href[href]?
+        unless name
+          if (host = URI.parse(href).host) && (segment = href.split('/').last?.presence)
+            name = handles_by_host_and_segment[{host.downcase, segment.lstrip('@').downcase}]?
+          end
+        end
+        if name
           anchor["href"] = "/remote/actors/#{name}"
           anchor["data-turbo-frame"] = "_top"
           # sanitize decorates external links with target/rel; both

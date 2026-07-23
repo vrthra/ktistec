@@ -37,6 +37,16 @@ Spectator.describe "helpers" do
       expect(html).to contain(%q|href='https://remote.example/@alice'|)
     end
 
+    context "when the mentioned actor was never cached locally" do
+      let_create!(:mention, named: nil, subject: object, name: "bob@other.example", href: "https://other.example/users/bob")
+
+      it "still localizes the profile-URL anchor" do
+        uncached = %q|<p><a href="https://other.example/@bob">@bob</a></p>|
+        html = self.class.content_html(uncached, object, account).to_s
+        expect(html).to contain(%q|href="/remote/actors/bob@other.example"|)
+      end
+    end
+
     it "leaves anchors that do not match a mention alone" do
       other = %q|<p><a href="https://elsewhere.example/page">link</a></p>|
       html = self.class.content_html(other, object, account).to_s
