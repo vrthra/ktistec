@@ -307,8 +307,15 @@ class Task
               WHERE o1.thread IS NULL AND o1.in_reply_to_iri IS NULL
              UNION
              -- recursive case: objects that are replies
+             -- (INDEXED BY forces the lookup by in_reply_to_iri, which is
+             -- highly selective; without it, at scale, SQLite's planner
+             -- instead picks idx_objects_thread on "thread IS NULL" for the
+             -- recursive step -- selective only when almost no rows are
+             -- legacy-threaded, but catastrophic otherwise: 0.9s vs. 2h46m+
+             -- and still running, measured against ~144K legacy-threaded
+             -- rows out of ~808K objects.)
              SELECT o2.iri, rc.root_iri
-               FROM objects o2, reply_chain rc
+               FROM objects o2 INDEXED BY idx_objects_in_reply_to_iri, reply_chain rc
               WHERE o2.thread IS NULL AND o2.in_reply_to_iri = rc.iri
            )
            SELECT DISTINCT rc.iri
