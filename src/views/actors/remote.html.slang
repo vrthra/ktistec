@@ -1,6 +1,6 @@
 - if !actor.blocked?
   turbo-stream-source src=stream_path("actors", actor.id)
-  - partial actor_panel_partial(env, actor)
+  - partial actor_panel_partial(env, actor, follow_actor)
   section.ui.feed data-controller="icon-load-error"
     - pinned.each do |object|
       - partial object_partial(env, object, for_actor: actor)

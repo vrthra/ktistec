@@ -137,6 +137,22 @@
             - if content
               .extra.meta.truncated
                 = … content, 150
+        - in Relationship::Content::Notification::Follow::Actor
+          crystal:
+            subject = notification.subject
+            object = subject.known_posts(limit: 1).first?
+            content = object ? object.preview : nil
+            emojis = Tag::Emoji.where(subject: subject)
+          .label
+            = actor_icon(subject)
+          .content
+            .summary
+              | There are new posts from
+              a< href=remote_actor_path(subject) = emoji_name(subject, emojis: emojis)
+              | .
+            - if content
+              .extra.meta.truncated
+                = … content, 150
         - in Relationship::Content::Notification::Follow
           crystal:
             activity = notification.activity

@@ -1,5 +1,6 @@
 require "../../src/models/activity_pub/activity/follow"
 require "../../src/models/activity_pub/activity/quote_request"
+require "../../src/models/relationship/content/follow/actor"
 require "../../src/views/view_helper"
 
 require "../spec_helper/factory"
@@ -350,6 +351,7 @@ Spectator.describe "partials" do
     let_create(:actor)
 
     let(env) { make_env("GET", "/actor") }
+    let(follow_actor) { nil.as(Relationship::Content::Follow::Actor?) }
 
     subject do
       begin
@@ -665,14 +667,14 @@ Spectator.describe "partials" do
     end
   end
 
-  describe "actor-card.html.slang" do
+  describe "actor-line.html.slang" do
     let_create(:actor)
 
     let(env) { make_env("GET", "/actors/foo_bar") }
 
     subject do
       begin
-        XML.parse_html(render "./src/views/partials/actor-card.html.slang")
+        XML.parse_html(render "./src/views/partials/actor-line.html.slang")
       rescue XML::Error
         XML.parse_html("<div/>").document
       end
@@ -703,7 +705,7 @@ Spectator.describe "partials" do
         let(env) { make_env("GET", "/actors/foo_bar/following") }
 
         it "does not render a status label" do
-          expect(subject.xpath_nodes("//a[contains(@class,'link')]")).not_to be_empty
+          expect(subject.xpath_nodes("//a[contains(@class,'handle')]")).not_to be_empty
           expect(subject.xpath_nodes("//div[contains(@class,'activity')]//span[contains(@class,'label')]")).to be_empty
         end
       end
@@ -715,7 +717,7 @@ Spectator.describe "partials" do
           before_each { actor.down! }
 
           it "does not render a status label" do
-            expect(subject.xpath_nodes("//a[contains(@class,'link')]")).not_to be_empty
+            expect(subject.xpath_nodes("//a[contains(@class,'handle')]")).not_to be_empty
             expect(subject.xpath_nodes("//div[contains(@class,'activity')]//span[contains(@class,'label')]")).to be_empty
           end
         end
@@ -848,37 +850,42 @@ Spectator.describe "partials" do
         let(env) { make_env("GET", "/actors/foo_bar/following") }
 
         it "renders a status label" do
-          expect(subject.xpath_nodes("//div[contains(@class,'activity')]//span[contains(@class,'label')]/text()")).to have("No activity")
+          expect(subject.xpath_nodes("//div[contains(@class,'activity')]//a[contains(@class,'label')]/text()")).to have("No known posts")
         end
 
-        context "given recent activity" do
-          let_create!(:activity, actor: actor, created_at: 1.day.ago)
-          let_create!(:inbox_relationship, owner: account.actor, activity: activity, confirmed: true)
+        it "links the status label to the actor's page" do
+          expect(subject.xpath_nodes("//div[contains(@class,'activity')]//a[contains(@class,'label')]/@href")).to have("/remote/actors/#{actor.path_id}")
+        end
+
+        context "given a recent post" do
+          let_create!(:note, attributed_to: actor, published: 1.day.ago)
 
           it "does not render a status label" do
-            expect(subject.xpath_nodes("//div[contains(@class,'activity')]//span[contains(@class,'label')]")).to be_empty
+            expect(subject.xpath_nodes("//div[contains(@class,'activity')]//a[contains(@class,'label')]")).to be_empty
           end
 
-          it "renders the last-seen time" do
-            expect(subject.xpath_nodes("//span[contains(@class,'submeta') and contains(text(),'Last seen')]")).not_to be_empty
+          it "renders the last-posted time" do
+            expect(subject.xpath_nodes("//a[contains(@class,'submeta') and contains(text(),'Last posted')]")).not_to be_empty
           end
-        end
 
-        context "given old activity" do
-          let_create!(:activity, actor: actor, created_at: 90.days.ago)
-          let_create!(:inbox_relationship, owner: account.actor, activity: activity, confirmed: true)
-
-          it "renders a status label" do
-            expect(subject.xpath_nodes("//div[contains(@class,'activity')]//span[contains(@class,'label') and contains(@class,'stale')]")).not_to be_empty
+          it "links the last-posted time to the actor's page" do
+            expect(subject.xpath_nodes("//a[contains(@class,'submeta')]/@href")).to have("/remote/actors/#{actor.path_id}")
           end
         end
 
-        context "given very old activity" do
-          let_create!(:activity, actor: actor, created_at: 2.years.ago)
-          let_create!(:inbox_relationship, owner: account.actor, activity: activity, confirmed: true)
+        context "given an old post" do
+          let_create!(:note, attributed_to: actor, published: 90.days.ago)
 
           it "renders a status label" do
-            expect(subject.xpath_nodes("//div[contains(@class,'activity')]//span[contains(@class,'label') and contains(@class,'broken')]")).not_to be_empty
+            expect(subject.xpath_nodes("//div[contains(@class,'activity')]//a[contains(@class,'label') and contains(@class,'stale')]")).not_to be_empty
+          end
+        end
+
+        context "given a very old post" do
+          let_create!(:note, attributed_to: actor, published: 2.years.ago)
+
+          it "renders a status label" do
+            expect(subject.xpath_nodes("//div[contains(@class,'activity')]//a[contains(@class,'label') and contains(@class,'broken')]")).not_to be_empty
           end
         end
       end

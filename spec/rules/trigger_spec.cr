@@ -7,6 +7,7 @@ require "../../src/models/relationship/content/public_tagged"
 require "../../src/models/relationship/content/notification/follow/hashtag"
 require "../../src/models/relationship/content/notification/follow/mention"
 require "../../src/models/relationship/content/notification/follow/thread"
+require "../../src/models/relationship/content/notification/follow/actor"
 
 require "../spec_helper/base"
 require "../spec_helper/factory"
@@ -44,6 +45,10 @@ Spectator.describe Rules::Trigger do
   end
 
   preserve_view_registry
+
+  def actor_notification_count(subject_iri)
+    Notification::Follow::Actor.count(from_iri: actor.iri, to_iri: subject_iri)
+  end
 
   describe ".reconcile_for_activity" do
     let_create!(:follow_hashtag_relationship, named: hashtag_follow, actor: actor, name: "foo")
@@ -236,6 +241,27 @@ Spectator.describe Rules::Trigger do
         end
       end
     end
+
+    context "given a followed actor" do
+      let_create!(:follow_actor_relationship, named: actor_follow, actor: actor, subject: author)
+      let_create!(:object, named: post, attributed_to: author, created_at: actor_follow.created_at + 2.seconds)
+
+      it "materializes the notification for the followed actor's post" do
+        expect { Rules::Trigger.reconcile_for_actor(author) }
+          .to change { actor_notification_count(author.iri) }.from(0).to(1)
+      end
+
+      context "when a notification exists and the author is blocked" do
+        let_create!(:notification_follow_actor, owner: actor, subject: author, created_at: post.created_at)
+
+        before_each { author.assign(blocked_at: post.created_at + 1.second).save }
+
+        it "evicts the notification" do
+          expect { Rules::Trigger.reconcile_for_actor(author) }
+            .to change { actor_notification_count(author.iri) }.from(1).to(0)
+        end
+      end
+    end
   end
 
   describe ".reconcile_for_thread" do
@@ -344,6 +370,26 @@ Spectator.describe Rules::Trigger do
     end
   end
 
+  describe ".reconcile_for_actor_follow_target" do
+    let(appeared_at) { actor_follow.created_at + 1.second }
+    let_create!(:follow_actor_relationship, named: actor_follow, actor: actor, subject: author)
+    let_create!(:object, named: post, attributed_to: author, created_at: appeared_at)
+
+    it "materializes the actor-follow notification for a qualifying object" do
+      expect { Rules::Trigger.reconcile_for_actor_follow_target(actor.iri, author.iri) }
+        .to change { actor_notification_count(author.iri) }.from(0).to(1)
+    end
+
+    context "when the object appeared before the follow" do
+      let(appeared_at) { actor_follow.created_at - 1.second }
+
+      it "does not materialize the notification" do
+        expect { Rules::Trigger.reconcile_for_actor_follow_target(actor.iri, author.iri) }
+          .not_to change { actor_notification_count(author.iri) }
+      end
+    end
+  end
+
   # each entry point that drives the maintainer must notify the
   # owner's subject. the subject family (notifications vs. timeline)
   # is incidental here: `notify` forwards `view.subjects`
@@ -447,6 +493,16 @@ Spectator.describe Rules::Trigger do
           Rules::Trigger.reconcile_for_hashtag(actor.iri, "foo")
           expect(notified).to be_empty
         end
+      end
+    end
+
+    context "via reconcile_for_actor_follow_target" do
+      let_create!(:follow_actor_relationship, named: actor_follow, actor: actor, subject: author)
+      let_create!(:object, named: post, attributed_to: author)
+
+      it "notifies the owner's notifications subject" do
+        Rules::Trigger.reconcile_for_actor_follow_target(actor.iri, author.iri)
+        expect(notified).to eq([owner_subject])
       end
     end
 
@@ -565,6 +621,18 @@ Spectator.describe Rules::Trigger do
     it "evicts the mention-follow notification" do
       expect { mention_follow.destroy }
         .to change { mention_notification_count(mention_href) }.from(1).to(0)
+    end
+  end
+
+  describe "when an actor-follow is destroyed" do
+    let_create!(:follow_actor_relationship, named: actor_follow, actor: actor, subject: author)
+    let_create!(:notification_follow_actor, owner: actor, subject: author)
+
+    pre_condition { expect(actor_notification_count(author.iri)).to eq(1) }
+
+    it "evicts the actor-follow notification" do
+      expect { actor_follow.destroy }
+        .to change { actor_notification_count(author.iri) }.from(1).to(0)
     end
   end
 

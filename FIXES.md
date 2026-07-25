@@ -556,4 +556,78 @@ Two compounding effects on constrained hardware:
 
 ---
 
+## 9. Remote avatar/banner (and attachment) images are hotlinked with no size or dimension cap
+
+**Status:** partially mitigated — banner display height hardened (`min-height`
+→ `height` in `.ui.actor.segments > .segment:first-child`,
+`src/assets/css/main.less`) so the rendered box can never grow past 18rem
+regardless of source image size. The underlying fetch-side exposure below is
+**not yet fixed** — tracked here for later, more complete work.
+**Area:** bandwidth / privacy / potential DoS via hotlinking
+**Files:** `src/utils/avatar.cr`, `src/views/partials/actor-panel.html.slang`,
+`src/views/partials/object/content/attachments.html.slang`, and any other
+view that renders `actor.icon`, `actor.image`, or attachment URLs
+
+### The problem
+
+Found while looking at a real remote actor's profile (`kaiser_franz@infosec.exchange`,
+1405×533px / 330KB header image, unremarkable) and asking why the banner
+container has no upper size bound. It turns out the *rendered* box was
+already safe (see status above) — `.actor-icon-container` and the type badge
+are both `position: absolute`, so nothing in-flow could ever push
+`.segment:first-child` taller than its `min-height`. The real gap is one
+level up: **Ktistec never fetches, validates, or caches any remote media
+before linking to it.**
+
+`Utils::Avatar.url_for` (avatar icons) and `actor_background_style`
+(banners) both do the same thing: if the remote actor supplies a
+same-scheme, safe-scheme URL, that URL is emitted directly as `src=`/
+`background-image: url(...)`, unmodified. Post image attachments
+(`attachments.html.slang`, `attachment.url_safe`) follow the identical
+pattern. Every viewer's browser fetches the file directly from the remote
+origin, full-size, with:
+
+- no `Content-Length` check (and it can't be trusted even if present —
+  a malicious server can lie or stream indefinitely),
+- no pixel-dimension check,
+- no local caching, so the cost repeats on every page view by every
+  visitor, and
+- no isolation — the remote origin sees every viewer's IP/UA directly
+  (a minor privacy leak: viewing a post exposes readers to the
+  attributed actor's/attacher's home server).
+
+This is consistent everywhere remote media is shown (avatars, banners,
+attachments) — it is not a banner-specific bug, so a real fix should be
+scoped as a general media-handling change, not patched per-callsite.
+
+### Why this wasn't fixed now
+
+A proper fix is a new subsystem, not a patch: fetch-with-a-hard-byte-cap
+(abort the connection once N bytes have arrived, since headers can't be
+trusted), decode-and-validate as an actual image, resize/cache the result,
+and rewrite every view that currently emits a raw remote URL to point at
+the cached copy instead. That has real design decisions (cache storage
+location and eviction, whether fetching happens inline in the request path
+or via the task worker, size/dimension limits) and real cost if done
+carelessly: this host is 956MB RAM, no swap, single-threaded — synchronous
+image fetch/decode in the request path is exactly the shape of problem
+that already caused two real outages here (see #7, #8). It needs its own
+design pass rather than a same-session patch.
+
+### Possible directions (not yet designed)
+
+- Fetch remote media through the existing task worker (already the
+  pattern for federation delivery) rather than inline during page render,
+  writing a resized/re-encoded local copy keyed by URL or IRI.
+- Cap accepted size during fetch by reading the stream incrementally and
+  aborting past a hard limit (e.g. 5–10MB), independent of any
+  `Content-Length` header.
+- Decide retention/eviction policy for cached media up front — this class
+  of "grows forever" mistake is exactly what #1 and #5 were about.
+- Consider whether avatars/banners specifically warrant a smaller
+  independent limit than post attachments, given they're fetched far more
+  often (once per rendered card/panel, vs. once per post view).
+
+---
+
 <!-- Next findings appended below as they're identified. -->

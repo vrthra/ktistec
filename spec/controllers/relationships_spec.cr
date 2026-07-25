@@ -110,8 +110,8 @@ Spectator.describe RelationshipsController do
         it "renders only the related public actors" do
           get "/actors/#{actor.username}/following", HTML_HEADERS
           expect(response.status_code).to eq(200)
-          expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'card')]//@href")).to contain(other1.iri)
-          expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'card')]//@href")).not_to contain(other2.iri)
+          expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'line')]//@href")).to contain(other1.iri)
+          expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'line')]//@href")).not_to contain(other2.iri)
         end
 
         it "renders only the related public actors" do
@@ -128,21 +128,21 @@ Spectator.describe RelationshipsController do
         it "renders all the related actors" do
           get "/actors/#{actor.username}/following", HTML_HEADERS
           expect(response.status_code).to eq(200)
-          expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'card')]//@href")).to contain(other1.iri, other2.iri)
+          expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'line')]//@href")).to contain(other1.iri, other2.iri)
         end
 
         context "with a search parameter" do
           it "filters actors by the regular expression" do
             get "/actors/#{actor.username}/following?search=^#{other1.username}$", HTML_HEADERS
             expect(response.status_code).to eq(200)
-            expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'card')]//@href")).to contain(other1.iri)
-            expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'card')]//@href")).not_to contain(other2.iri)
+            expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'line')]//@href")).to contain(other1.iri)
+            expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'line')]//@href")).not_to contain(other2.iri)
           end
 
           it "matches case-insensitively by default" do
             get "/actors/#{actor.username}/following?search=^#{other1.username.not_nil!.upcase}$", HTML_HEADERS
             expect(response.status_code).to eq(200)
-            expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'card')]//@href")).to contain(other1.iri)
+            expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'line')]//@href")).to contain(other1.iri)
           end
 
           it "renders a message when nothing matches" do
@@ -155,7 +155,7 @@ Spectator.describe RelationshipsController do
             get "/actors/#{actor.username}/following?search=%5B", HTML_HEADERS
             expect(response.status_code).to eq(200)
             expect(response.body).to contain("invalid regular expression")
-            expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'card')]//@href")).to contain(other1.iri, other2.iri)
+            expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'line')]//@href")).to contain(other1.iri, other2.iri)
           end
         end
 
@@ -202,8 +202,8 @@ Spectator.describe RelationshipsController do
         it "renders only the related public actors" do
           get "/actors/#{actor.username}/followers", HTML_HEADERS
           expect(response.status_code).to eq(200)
-          expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'card')]//@href")).to contain(other1.iri)
-          expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'card')]//@href")).not_to contain(other2.iri)
+          expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'line')]//@href")).to contain(other1.iri)
+          expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'line')]//@href")).not_to contain(other2.iri)
         end
 
         it "renders only the related public actors" do
@@ -220,7 +220,7 @@ Spectator.describe RelationshipsController do
         it "renders all the related actors" do
           get "/actors/#{actor.username}/followers", HTML_HEADERS
           expect(response.status_code).to eq(200)
-          expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'card')]//@href")).to contain(other1.iri, other2.iri)
+          expect(XML.parse_html(response.body).xpath_nodes("//div[contains(@class,'line')]//@href")).to contain(other1.iri, other2.iri)
         end
 
         it "renders all the related actors" do

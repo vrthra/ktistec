@@ -1,6 +1,7 @@
 require "../framework/controller"
 require "../utils/network"
 require "../utils/web_finger"
+require "../models/relationship/content/follow/actor"
 
 class InteractionsController
   include Ktistec::Controller
@@ -102,7 +103,8 @@ class InteractionsController
       pinned, objects = cursor_paginate_with_pins(actor, cursor_params[:limit]) do
         actor.known_posts(**cursor_params, exclude_pinned: true)
       end
-      ok "actors/remote", env: env, actor: actor, pinned: pinned, objects: objects
+      follow_actor = Relationship::Content::Follow::Actor.find?(actor: env.account.actor, subject: actor)
+      ok "actors/remote", env: env, actor: actor, pinned: pinned, objects: objects, follow_actor: follow_actor
     when ActivityPub::Object
       actor_or_object.attributed_to?(env.account.actor, dereference: true)
       object = actor_or_object.save

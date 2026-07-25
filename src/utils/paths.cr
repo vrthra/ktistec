@@ -350,6 +350,14 @@ module Utils::Paths
     ::Ktistec::SafeURI.assert_safe("#{Utils::Paths.remote_actor_path({{actor}})}/refresh")
   end
 
+  macro follow_actor_notifications_path(actor = nil)
+    ::Ktistec::SafeURI.assert_safe("#{Utils::Paths.remote_actor_path({{actor}})}/follow-notifications")
+  end
+
+  macro unfollow_actor_notifications_path(actor = nil)
+    ::Ktistec::SafeURI.assert_safe("#{Utils::Paths.remote_actor_path({{actor}})}/unfollow-notifications")
+  end
+
   macro actor_feeds_path(actor = nil, drafts = false)
     {% if drafts %}
       ::Ktistec::SafeURI.assert_safe("#{Utils::Paths.actor_path({{actor}})}/feeds?include=drafts")

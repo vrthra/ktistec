@@ -1,10 +1,12 @@
 require "../framework/controller"
 require "../models/task/refresh_actor"
+require "../models/relationship/content/follow/actor"
 require "../utils/rss"
 
 require "../models/relationship/content/notification/follow/hashtag"
 require "../models/relationship/content/notification/follow/mention"
 require "../models/relationship/content/notification/follow/thread"
+require "../models/relationship/content/notification/follow/actor"
 require "../models/relationship/content/notification/poll/expiry"
 
 class ActorsController
@@ -245,7 +247,9 @@ class ActorsController
       actor.known_posts(**cursor_params, exclude_pinned: true)
     end
 
-    ok "actors/remote", env: env, actor: actor, pinned: pinned, objects: objects
+    follow_actor = Relationship::Content::Follow::Actor.find?(actor: env.account.actor, subject: actor)
+
+    ok "actors/remote", env: env, actor: actor, pinned: pinned, objects: objects, follow_actor: follow_actor
   end
 
   # MULTI_USER NOTE: block and unblock operations set/clear a global
@@ -269,6 +273,28 @@ class ActorsController
     end
 
     actor.unblock!
+
+    redirect back_path
+  end
+
+  post "/remote/actors/:id/follow-notifications" do |env|
+    unless (actor = get_remote_actor(env))
+      not_found
+    end
+
+    follow_actor = Relationship::Content::Follow::Actor.find_or_new(actor: env.account.actor, subject: actor)
+    follow_actor.save if follow_actor.new_record?
+
+    redirect back_path
+  end
+
+  post "/remote/actors/:id/unfollow-notifications" do |env|
+    unless (actor = get_remote_actor(env))
+      not_found
+    end
+
+    follow_actor = Relationship::Content::Follow::Actor.find?(actor: env.account.actor, subject: actor)
+    follow_actor.destroy if follow_actor
 
     redirect back_path
   end

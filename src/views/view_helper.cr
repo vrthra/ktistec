@@ -123,7 +123,7 @@ module Ktistec::ViewHelper
       partial "partials/thread_page_thread_controls"
     end
 
-    def actor_panel_partial(env, actor, content_io)
+    def actor_panel_partial(env, actor, follow_actor = nil, *, content_io)
       partial "partials/actor-panel"
     end
 

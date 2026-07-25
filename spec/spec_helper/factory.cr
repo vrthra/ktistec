@@ -314,6 +314,11 @@ def notification_follow_thread_factory(object_iri = nil, object = false, **optio
   notification_factory(Relationship::Content::Notification::Follow::Thread, **{object_iri: object_iri, object: object, activity: nil}.merge(options))
 end
 
+def notification_follow_actor_factory(subject_iri = nil, subject = false, **options)
+  subject = actor_factory unless subject_iri || subject.nil? || subject
+  notification_factory(Relationship::Content::Notification::Follow::Actor, **{subject_iri: subject_iri, subject: subject, activity: nil}.merge(options))
+end
+
 def notification_poll_expiry_factory(question_iri = nil, question = false, **options)
   question = question_factory unless question_iri || question.nil? || question
   notification_factory(Relationship::Content::Notification::Poll::Expiry, **{question_iri: question_iri, question: question, activity: nil}.merge(options))
@@ -386,6 +391,12 @@ end
 
 def follow_thread_relationship_factory(**options)
   relationship_factory(Relationship::Content::Follow::Thread, **options)
+end
+
+def follow_actor_relationship_factory(actor_iri = nil, actor = false, subject_iri = nil, subject = false, **options)
+  actor = actor_factory unless actor_iri || actor.nil? || actor
+  subject = actor_factory unless subject_iri || subject.nil? || subject
+  relationship_factory(Relationship::Content::Follow::Actor, **{from_iri: actor_iri, actor: actor, to_iri: subject_iri, subject: subject}.merge(options))
 end
 
 def approved_relationship_factory(**options)

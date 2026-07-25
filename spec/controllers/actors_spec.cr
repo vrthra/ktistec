@@ -1051,6 +1051,23 @@ Spectator.describe ActorsController do
         expect(JSON.parse(response.body).dig("id")).to eq(actor.iri)
       end
 
+      it "renders a button to get notified" do
+        get "/remote/actors/#{actor.id}", ACCEPT_HTML
+        expect(XML.parse_html(response.body).xpath_nodes("//button[@type='submit']/text()")).to have("Notify Me")
+      end
+
+      context "given an existing follow for notifications" do
+        let(follower_account) { register }
+        sign_in(as: follower_account.username)
+
+        let_create!(:follow_actor_relationship, named: nil, actor: follower_account.actor, subject: actor)
+
+        it "renders a button to stop notifications" do
+          get "/remote/actors/#{actor.id}", ACCEPT_HTML
+          expect(XML.parse_html(response.body).xpath_nodes("//button[@type='submit']/text()")).to have("Stop Notifying")
+        end
+      end
+
       it "renders the actor addressed by handle" do
         get "/remote/actors/#{actor.path_id}", ACCEPT_HTML
         expect(response.status_code).to eq(200)
@@ -1126,6 +1143,77 @@ Spectator.describe ActorsController do
       it "unblocks the actor" do
         expect { post "/remote/actors/#{actor.id}/unblock" }
           .to change { actor.reload!.blocked? }
+      end
+    end
+  end
+
+  describe "POST /remote/actors/:id/follow-notifications" do
+    let_create!(:actor, named: subject)
+    let(account) { register }
+
+    it "returns 401 if not authorized" do
+      post "/remote/actors/0/follow-notifications"
+      expect(response.status_code).to eq(401)
+    end
+
+    context "when authorized" do
+      sign_in(as: account.username)
+
+      it "returns 404 if not found" do
+        post "/remote/actors/999999/follow-notifications"
+        expect(response.status_code).to eq(404)
+      end
+
+      it "succeeds" do
+        post "/remote/actors/#{subject.id}/follow-notifications"
+        expect(response.status_code).to eq(302)
+      end
+
+      it "follows the actor for notifications" do
+        expect { post "/remote/actors/#{subject.id}/follow-notifications" }
+          .to change { Relationship::Content::Follow::Actor.find?(actor: account.actor, subject: subject) }.from(nil)
+      end
+
+      context "given an existing follow" do
+        let_create!(:follow_actor_relationship, named: nil, actor: account.actor, subject: subject)
+
+        it "does not change the count of follow relationships" do
+          expect { post "/remote/actors/#{subject.id}/follow-notifications" }
+            .not_to change { Relationship::Content::Follow::Actor.count(to_iri: subject.iri) }
+        end
+      end
+    end
+  end
+
+  describe "POST /remote/actors/:id/unfollow-notifications" do
+    let_create!(:actor, named: subject)
+    let(account) { register }
+
+    it "returns 401 if not authorized" do
+      post "/remote/actors/0/unfollow-notifications"
+      expect(response.status_code).to eq(401)
+    end
+
+    context "when authorized" do
+      sign_in(as: account.username)
+
+      it "returns 404 if not found" do
+        post "/remote/actors/999999/unfollow-notifications"
+        expect(response.status_code).to eq(404)
+      end
+
+      it "succeeds" do
+        post "/remote/actors/#{subject.id}/unfollow-notifications"
+        expect(response.status_code).to eq(302)
+      end
+
+      context "given an existing follow" do
+        let_create!(:follow_actor_relationship, named: nil, actor: account.actor, subject: subject)
+
+        it "unfollows the actor" do
+          expect { post "/remote/actors/#{subject.id}/unfollow-notifications" }
+            .to change { Relationship::Content::Follow::Actor.find?(actor: account.actor, subject: subject) }.to(nil)
+        end
       end
     end
   end

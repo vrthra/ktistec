@@ -3,6 +3,7 @@ require "./maintainer"
 require "./view/follow_thread"
 require "./view/follow_hashtag"
 require "./view/follow_mention"
+require "./view/follow_actor"
 require "./view/public_tagged"
 require "./view/feed"
 require "../services/feed/judging"
@@ -19,6 +20,7 @@ require "../models/feed/question"
 require "../models/relationship/content/follow/thread"
 require "../models/relationship/content/follow/hashtag"
 require "../models/relationship/content/follow/mention"
+require "../models/relationship/content/follow/actor"
 require "../models/tag/hashtag"
 require "../models/tag/mention"
 require "../models/account"
@@ -110,6 +112,12 @@ module Rules
           JOIN relationships f ON f.type = ? AND f.to_iri = t.href
          WHERE o.attributed_to_iri = ?
         SQL
+      object_iris += Ktistec.database.query_all(<<-SQL, Relationship::Content::Follow::Actor.to_s, actor.iri, as: String)
+        SELECT DISTINCT o.iri
+          FROM objects o
+          JOIN relationships f ON f.type = ? AND f.to_iri = o.attributed_to_iri
+         WHERE o.attributed_to_iri = ?
+        SQL
       notify(Rules::Maintainer.reconcile_objects(object_iris.uniq))
     end
 
@@ -191,6 +199,20 @@ module Rules
       notify(changed)
     end
 
+    # Re-evaluates the actor-follow notification for an `(owner, subject)`
+    # key.
+    #
+    def reconcile_for_actor_follow_target(owner_iri : String, subject_iri : String) : Nil
+      view : Rules::View = Rules::View::FollowActor.instance
+      key = {from_iri: owner_iri, to_iri: subject_iri}
+      notify([{view, owner_iri}]) if Rules::Maintainer.reconcile_for(view, key)
+    end
+
+    # :ditto:
+    def reconcile_for_actor_follow(follow : Relationship::Content::Follow::Actor) : Nil
+      reconcile_for_actor_follow_target(follow.from_iri, follow.to_iri)
+    end
+
     # Notifies the pub/sub subjects for the changed `(view, owner)` pairs,
     # waking subscribed clients to refresh.
     #
@@ -225,6 +247,9 @@ Relationship::Content::Follow::Mention::OBSERVERS.observe(:destroy) { |follow| R
 
 # rebuild a feed's contents when it moves to another version.
 Feed::OBSERVERS.observe(:version) { |feed| Rules::Trigger.reconcile_for_feed(feed) }
+
+# evict the actor-follow notification when its follow is removed.
+Relationship::Content::Follow::Actor::OBSERVERS.observe(:destroy) { |follow| Rules::Trigger.reconcile_for_actor_follow(follow) }
 
 # re-evaluate the public hashtag feed when a hashtag is added or removed.
 Tag::OBSERVERS.observe(:create) { |tag| Rules::Trigger.reconcile_for_tag(tag) if tag.is_a?(Tag::Hashtag) }

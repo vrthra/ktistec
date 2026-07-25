@@ -980,6 +980,25 @@ module ActivityPub
       end
     end
 
+    # Returns the publication time of this actor's most recent known
+    # post.
+    #
+    # Matches the same visibility rules as `#known_posts`, so the
+    # returned time always corresponds to that list's first entry.
+    #
+    # Returns `nil` if no post is known.
+    #
+    def last_known_post_at : Time?
+      query = <<-QUERY
+         SELECT MAX(o.published)
+           FROM objects AS o
+          WHERE o.attributed_to_iri = ?
+            #{common_filters(objects: "o")}
+            AND o.visible = 1
+      QUERY
+      Ktistec.database.query_one(query, self.iri, as: Time?)
+    end
+
     # Returns the SQL fragment and bound arguments for excluding
     # pinned objects. The SQL references `o` as the object alias; call
     # sites must alias `objects AS o`.

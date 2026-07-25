@@ -1858,6 +1858,54 @@ Spectator.describe ActivityPub::Actor do
     end
   end
 
+  describe "#last_known_post_at" do
+    subject { described_class.new(iri: "https://test.test/#{random_string}").save }
+
+    it "returns nil" do
+      expect(subject.last_known_post_at).to be_nil
+    end
+
+    context "given a known post" do
+      let_create!(:note, named: older, attributed_to: subject, published: Time.utc(2025, 1, 1))
+
+      it "returns its publication time" do
+        expect(subject.last_known_post_at).to eq(older.published)
+      end
+
+      context "and a more recent post" do
+        let_create!(:note, named: newer, attributed_to: subject, published: Time.utc(2026, 1, 1))
+
+        it "returns the most recent publication time" do
+          expect(subject.last_known_post_at).to eq(newer.published)
+        end
+      end
+
+      context "and a more recent post from a different actor" do
+        let_create!(:note, named: different, published: Time.utc(2026, 1, 1))
+
+        it "ignores the post" do
+          expect(subject.last_known_post_at).to eq(older.published)
+        end
+      end
+
+      context "and a more recent, unpublished draft" do
+        let_create!(:note, named: nil, attributed_to: subject, published: nil)
+
+        it "ignores the draft" do
+          expect(subject.last_known_post_at).to eq(older.published)
+        end
+      end
+
+      context "and a more recent, non-visible post" do
+        let_create!(:note, named: nil, attributed_to: subject, published: Time.utc(2026, 1, 1), visible: false)
+
+        it "ignores the non-visible post" do
+          expect(subject.last_known_post_at).to eq(older.published)
+        end
+      end
+    end
+  end
+
   describe "#known_posts" do
     subject { described_class.new(iri: "https://test.test/#{random_string}").save }
 

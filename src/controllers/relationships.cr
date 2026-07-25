@@ -6,6 +6,12 @@ class RelationshipsController
   skip_auth ["/actors/:username/following"], GET
   skip_auth ["/actors/:username/followers"], GET
 
+  # Followers/following are rendered as a single, unpaginated list
+  # (see `relationships/actors.html.slang`). This caps how many rows
+  # that list will ever fetch/render in one request.
+  #
+  SHOW_ALL_LIMIT = 1000
+
   # Authorizes account access for public relationship data.
   #
   # Returns the account if it exists, `nil` otherwise.
@@ -61,7 +67,7 @@ class RelationshipsController
     end
 
     search, search_error = search_param(env)
-    related = account.actor.all_following(**cursor_pagination_params(env), public: env.account? != account, search: search)
+    related = account.actor.all_following(limit: SHOW_ALL_LIMIT, public: env.account? != account, search: search)
     ok "relationships/actors", env: env, related: related, title: "Following", search: env.params.query["search"]?, search_error: search_error
   end
 
@@ -71,7 +77,7 @@ class RelationshipsController
     end
 
     search, search_error = search_param(env)
-    related = account.actor.all_followers(**cursor_pagination_params(env), public: env.account? != account, search: search)
+    related = account.actor.all_followers(limit: SHOW_ALL_LIMIT, public: env.account? != account, search: search)
     ok "relationships/actors", env: env, related: related, title: "Followers", search: env.params.query["search"]?, search_error: search_error
   end
 

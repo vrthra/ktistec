@@ -42,7 +42,6 @@
         | There is nothing here yet.
 - else
   h1= title
-  section.ui.two.doubling.cards
+  .ui.actor.lines
     - related.each do |actor|
-      - partial "partials/actor-card"
-  - partial paginate(env, related)
+      - partial "partials/actor-line"
