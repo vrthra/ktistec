@@ -10,3 +10,4 @@ ktistec.db-wal
 ktistec.db-shm
 server.dwarf
 server
+/ops/db_shard_tool
