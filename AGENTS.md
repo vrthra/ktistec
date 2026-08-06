@@ -54,7 +54,18 @@ Last verified: 2026-08-05.
 
 ### Taking future upstream releases
 
-1. `git fetch o`
+**Rebase onto `o/main`, NEVER onto the `vX.Y.Z` tag.** Upstream tags its
+releases on a separate `dist` branch that additionally commits the built
+`public/dist/` bundles (38 files). Our fork descends from upstream `main`,
+which does not track them, and deliberately untracks them (`.gitignore`).
+Rebasing onto the tag pulls generated assets into our history. Check with
+`git ls-tree <ref> public/dist/ | wc -l` — `o/main` gives 0, the tag gives 38.
+
+Because `public/dist/` is untracked here, a checkout that *would* introduce
+those files aborts with "untracked working tree files would be overwritten".
+Move `public/dist` aside, rebase, then move it back.
+
+1. `git fetch o --tags`
 2. Inspect: `git log --oneline main..o/main` and
    `git diff --stat main...o/main`
 3. Check for overlap with our fixes (files listed in `FIXES.md`; especially
@@ -382,11 +393,22 @@ cd ~/ktistec/rootdir/app
 # 1. Stop the server (or Ctrl-C inside the tmux session):
 cd ~/ktistec && make stop && sleep 2 && make checklock   # should show nothing holding the db
 cd ~/ktistec/rootdir/app
-ls ktistec.db-wal 2>/dev/null   # after a clean stop this is usually gone (checkpointed)
 
-# 2. Back up the database (server MUST be stopped):
-cp ktistec.db ktistec.db.pre-$(date +%F)
-# (equally valid: sqlite3 ktistec.db ".backup ktistec.db.pre-$(date +%F)")
+# 2. CHECKPOINT THE WAL, then back up (server MUST be stopped):
+#    `make stop` is `killall -9`, NOT a clean shutdown, so the WAL is NOT
+#    checkpointed and `ktistec.db-wal` still holds recent writes (4.2 MB on
+#    2026-08-07). A plain `cp` of ktistec.db alone would SILENTLY LOSE them.
+#    Opening the db with sqlite3 recovers the WAL; TRUNCATE then removes it.
+sqlite3 ktistec.db "PRAGMA wal_checkpoint(TRUNCATE);"   # prints "0|0|0"
+ls ktistec.db-wal 2>/dev/null   # must now be GONE before you copy
+cp ktistec.db ktistec.db.pre-$(date +%F)                # ~90s for 2.4 GB
+# (equally valid, and WAL-safe without the checkpoint:
+#  sqlite3 ktistec.db ".backup ktistec.db.pre-$(date +%F)")
+
+# Do NOT run `PRAGMA quick_check` here. On this host it reads the whole
+# 2.4 GB database and had not finished after 10 minutes of extra downtime
+# (tried 2026-08-07, abandoned). It is safe to interrupt (read-only), but
+# it is not part of the procedure — run it offline against a copy instead.
 
 # 3. Keep the old binary (rollback path):
 cp server server.$(date +%F)-pre-deploy
@@ -399,6 +421,23 @@ cd ~/ktistec && make start-server
 # Watch the output: migrations print as "<name>: applied in X.XXs",
 # then "Ktistec is ready to lead at http://0.0.0.0:3000".
 ```
+
+Starting it **non-interactively** (no attach) — send the command to the
+`server` window, the same way the watchdog does:
+
+```sh
+ssh web 'tmux send-keys -t 0:server "cd ~/ktistec && make start-server" Enter'
+ssh web 'tmux capture-pane -t 0:server -p | tail -25'          # live tail
+ssh web 'tmux capture-pane -t 0:server -p -S -3000 | grep -iE "applied in|ready to lead"'
+```
+
+Reading that log after a deploy — two things that look alarming and are not:
+
+- **`make: *** [Makefile:2: start-server] Error 137`** is the OLD server
+  dying from your own `make stop` (137 = 128+SIGKILL). Expected.
+- **Timestamps matter.** The tmux scrollback still holds the previous
+  process's output, including its slow queries. Check the clock before
+  attributing a slow query to the new binary.
 
 ### 4.3 Verify after start
 
