@@ -183,7 +183,7 @@ Spectator.describe MCP::Resources do
         json = JSON.parse(text)
 
         expect(json["external_url"]).to eq(alice.iri)
-        expect(json["internal_url"]).to eq("https://test.test/remote/actors/#{alice.actor.id}")
+        expect(json["internal_url"]).to eq("https://test.test/remote/actors/#{alice.actor.path_id}")
         expect(json["actor_uri"]).to eq("ktistec://actors/#{alice.actor.id}")
         expect(json["name"]).to eq("Alice")
         expect(json["summary"]).to eq("Alice's summary")
@@ -241,7 +241,7 @@ Spectator.describe MCP::Resources do
         json = JSON.parse(text)
 
         expect(json["external_url"]).to eq(actor.iri)
-        expect(json["internal_url"]).to eq("https://test.test/remote/actors/#{actor.id}")
+        expect(json["internal_url"]).to eq("https://test.test/remote/actors/#{actor.path_id}")
         expect(json["name"]).to eq("Test Actor")
         expect(json["summary"]).to eq("This is a summary")
         expect(json["icon"]).to eq("https://example.com/icon.png")

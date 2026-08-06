@@ -5,7 +5,7 @@ system. It is written so that someone (or some tool) with no prior context can
 follow it. Read it fully before changing anything. When in doubt, do the
 smaller, reversible thing.
 
-Last verified: 2026-07-20.
+Last verified: 2026-08-05.
 
 ---
 
@@ -28,14 +28,29 @@ Last verified: 2026-07-20.
 | `origin` | git@github.com:vrthra/ktistec.git            | Our fork (push target)      |
 | `o`      | https://github.com/toddsundsted/ktistec.git  | Upstream (pull only)        |
 
-### Branch state (as of 2026-07-20)
+### Branch state (as of 2026-08-05)
 
-- Local `main` = upstream **v3.9.0** + ~21 local commits rebased on top.
+- Local `main` = upstream **v3.9.0** + ~25 local commits rebased on top.
 - Because of the rebase, pushing to the fork requires:
   `git push --force-with-lease origin main`
-- Production runs **3.8.0** (the 3.9 rebase is built and verified but not yet
-  deployed). Check the live version any time with:
+- Production runs **3.9.0**, deployed 2026-07-21 (binary `server`, dated
+  Jul 21; rollback copy `server.2026-07-21d-pre-mention-fix`). That build
+  includes the 3.9 rebase, the mention-localization fixes, and the
+  `Follow::Actor` notifications. Check the live version any time with:
   `ssh web 'curl -s -H "Host: gopinath.org" http://localhost:3000/.well-known/nodeinfo/2.1'`
+- **Local commits NOT yet deployed** (verified 2026-08-05 by grepping the
+  live binary):
+  - `2dee1d23` — CollectGarbage legacy-thread `INDEXED BY` fix (server code;
+    matters only when garbage collection runs, but it is the difference
+    between 0.9s and hours). Probe whether it is live with:
+    `ssh web 'grep -c "INDEXED BY idx_objects_in_reply_to_iri" ~/ktistec/rootdir/app/server'`
+    (`1` = deployed, `0` = not).
+  - `92a57ee2` — this manual, `ops/watchdog.sh`, `ops/db_shard_tool.cr`
+    (docs/tooling; no server-binary impact, but `watchdog.sh` was copied to
+    the server by hand — see 3.1).
+- No migrations are pending: as of 2026-08-05 the repo/production migration
+  diff shows only the documented zero-padding difference and production's
+  extra ids 10 and 19 (see section 4.0).
 
 ### Taking future upstream releases
 
@@ -92,12 +107,48 @@ cd /home/rahul.gopinath/Ktistec/ktistec
 
 ### 2.4 Running tests
 
+**`crystal spec` with no arguments does NOT work on this machine.** Linking
+the whole suite into one binary produces an executable that dies in the
+dynamic loader before running a single example:
+
+```
+crystal-run-spec.tmp: symbol lookup error: ... undefined symbol:
+__libc_start_main, version Hash(K, V)#malloc_entries<Int32>:...
+```
+
+The corrupted symbol-version string is the tell: this is a link-stage
+problem at that binary's size/shape, not a code error. Verified 2026-08-05 —
+a trivial `crystal run` program works, `LD_PRELOAD`/`LD_LIBRARY_PATH` are
+empty, and wiping `~/.cache/crystal` does not help. Any single spec
+directory or file links and runs fine.
+
+Run the suite **per directory** instead:
+
 ```sh
 cd /home/rahul.gopinath/Ktistec/ktistec
-KEMAL_ENV=test ~/toolchains/crystal-1.19.1-1/bin/crystal spec          # full suite (slow)
+for d in models controllers rules services views framework utils api \
+         handlers workers channels mcp ktistec safe slang integrations; do
+  echo "##### spec/$d"
+  KEMAL_ENV=test ~/toolchains/crystal-1.19.1-1/bin/crystal spec spec/$d
+done
 # or targeted, e.g.:
 KEMAL_ENV=test ~/toolchains/crystal-1.19.1-1/bin/crystal spec spec/models/task_spec.cr spec/models/tag_spec.cr
 ```
+
+Reading the results — two traps, both hit on 2026-08-05:
+
+- **Do not pipe through `tail` and read `$?`** — that reports *`tail`'s*
+  exit status, so a failing chunk looks like a pass. Redirect to a file and
+  check the compiler's own exit code.
+- **`spec/controllers` prints stack traces AFTER its summary line.** They
+  are log noise from passing examples, not failures; a short `tail` crops
+  the "N examples, 0 failures" line and makes a green run look like a crash.
+  Grep for `examples,` rather than tailing.
+
+Baseline as of 2026-08-05 (3.10.0 rebase): **9,412 examples, 0 failures**
+across all 16 directories (models 2353, controllers 2778, framework 895,
+views 891, services 542, utils 479, slang 389, rules 369, api 367, mcp 190,
+safe 122, workers 15, handlers 12, channels 8, ktistec 1, integrations 1).
 
 ### 2.5 Production (static) build — THE DEPLOY ARTIFACT
 
@@ -136,6 +187,30 @@ CC=/tmp/cc-wrapper ~/toolchains/crystal-1.19.1-1/bin/crystal build --static --re
   Node.js). Only needed when `src/assets/`, `package.json`, or webpack config
   change — server-side `.slang` view changes are compiled INTO the binary and
   do not need an asset rebuild.
+- **`public/dist/` is NOT tracked in our fork** (untracked working files;
+  upstream tracks it only on its `dist` branch — see the tag warning in
+  section 1). Rebuilt bundles therefore never show in `git status`. They
+  must be copied to production by hand.
+- **Node on this machine is v18.19.1, and two things break on it**
+  (verified 2026-08-07):
+  1. `npm run build` fails with `ReferenceError: crypto is not defined`
+     (`serialize-javascript` via `css-minimizer-webpack-plugin` wants the
+     global Web Crypto API, which Node exposes by default only from v19).
+     **Workaround — use this instead of a bare `npm run build`:**
+     ```sh
+     NODE_OPTIONS=--experimental-global-webcrypto npm run build
+     ```
+  2. `npx vitest run` (the JS suite, and the `prebuild` hook) cannot start
+     at all: `SyntaxError: The requested module 'node:util' does not
+     provide an export named 'styleText'` — that export needs Node 20.12+.
+     **The JS tests cannot be run on this machine.** Mitigating factors:
+     our fork changes no JavaScript, and upstream gates its own releases
+     on this suite (`6c539394`). Installing Node 20+ would close both gaps.
+- Sanity-check a rebuild without running the tests: webpack prints
+  `modules by path ./src/assets/js/controllers/*.js ... N modules`; `N` must
+  equal `ls src/assets/js/controllers/*.js | wc -l`. Controllers are
+  auto-registered by `require.context` in `src/assets/js/main.js`, so a
+  missing file fails silently at runtime rather than at build time.
 - If assets changed, the changed files under `public/` must be copied to the
   production host's `~/ktistec/rootdir/app/public/` as part of the deploy.
 
@@ -168,8 +243,17 @@ CC=/tmp/cc-wrapper ~/toolchains/crystal-1.19.1-1/bin/crystal build --static --re
   `make start-server` again.
 - Docker artifacts on the server (docker Makefile targets, docker.pid, etc.)
   are legacy. The app runs as a bare binary.
-- **Watchdog:** a tmux window named **`watchdog`** (session `0`) runs
-  `~/ktistec/watchdog.sh` in a loop forever. It checks every 15 s for a
+- **Watchdog:** `~/ktistec/watchdog.sh` runs in a loop forever, in its own
+  tmux window in session `0` — intended to be a window named **`watchdog`**.
+  **Reality as of 2026-08-05: it is running, but from an ordinary
+  interactive window (`0:1`, named `bash`), not from a window named
+  `watchdog`.** So the "is it alive?" check below must be by process, not by
+  window name:
+  `ssh web 'pgrep -af watchdog.sh'` (authoritative) — `tmux list-windows -t 0`
+  will show no `watchdog` window even though it is running. If you get the
+  chance during a maintenance window, restart it in a properly named window
+  (see the recreate command below) so the name-based check works again.
+  It checks every 15 s for a
   running `server` process (`pgrep -x server`); if the process is gone
   (e.g. OOM-killed — this has happened on this 956 MB/no-swap host), it
   sends `cd ~/ktistec && make start-server` to the `server` window. It does
@@ -179,10 +263,11 @@ CC=/tmp/cc-wrapper ~/toolchains/crystal-1.19.1-1/bin/crystal build --static --re
   - The script targets tmux windows **by name** (`0:server`), not index —
     window indices shift whenever any window opens/closes (e.g. someone
     attaching interactively and closing panes), which has already caused a
-    silent failure once. **Do not rename these two windows**, and if you
-    manually create/close other windows in this session, verify with
-    `tmux list-windows -t 0` that `server` and `watchdog` still exist
-    afterward.
+    silent failure once. What matters for the script to work is that the
+    window named **`server`** exists; that is what it sends the restart
+    command to. **Do not rename it**, and if you manually create/close
+    windows in this session, verify with `tmux list-windows -t 0` that
+    `server` is still there afterward.
   - Crash-loop guard: if it has to restart 3 times within 5 minutes, it
     touches `~/ktistec/watchdog.pause` and stops acting (still logs), so a
     truly broken binary doesn't get restart-looped on this host. Needs
@@ -194,11 +279,15 @@ CC=/tmp/cc-wrapper ~/toolchains/crystal-1.19.1-1/bin/crystal build --static --re
     `make stop`.
   - Logs: `~/ktistec/watchdog.log`. State file (recent restart timestamps):
     `~/ktistec/watchdog.restarts`.
-  - **If the `watchdog` window itself ever disappears, there is no
-    auto-recovery for it** — check for it periodically
-    (`tmux list-windows -t 0`) after attaching to the session interactively.
-    Recreate with:
+  - **If the watchdog process itself ever dies, there is no auto-recovery
+    for it** — check periodically with `ssh web 'pgrep -af watchdog.sh'`
+    (and `tail ~/ktistec/watchdog.log`, whose last line is normally either a
+    `watchdog started` or a restart record). Recreate with:
     `tmux new-window -t 0: -n watchdog 'bash ~/ktistec/watchdog.sh'`
+  - Observed history: restarts logged 2026-07-25 00:02 and 2026-07-28 08:02
+    (the current server process dates from the latter), and the watchdog was
+    last (re)started 2026-07-28 09:19. Those restarts are the OOM-kill
+    scenario this host is prone to — see 3.3.
 
 ### 3.2 Front end (nginx)
 

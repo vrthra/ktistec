@@ -611,7 +611,7 @@ Spectator.describe MCP::Tools do
           expect(follow_notification["status"]).to eq("new")
           expect(follow_notification["follower_id"].as_i64).to eq(bob.id)
           expect(follow_notification["followee_id"].as_i64).to eq(account.id)
-          expect(follow_notification["action_url"]).to eq("#{Ktistec.host}/remote/actors/#{bob.id}")
+          expect(follow_notification["action_url"]).to eq("#{Ktistec.host}/remote/actors/#{bob.path_id}")
           expect(follow_notification["created_at"]).not_to be_nil
         end
 
