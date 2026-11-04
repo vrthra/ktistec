@@ -1,5 +1,5 @@
 - _account = env.account?
-.ui.actor.line
+.ui.actor.line data-controller="icon-load-error"
   - if actor.blocked?
     .avatar
       i.large.ban.icon
