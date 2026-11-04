@@ -5,7 +5,7 @@ system. It is written so that someone (or some tool) with no prior context can
 follow it. Read it fully before changing anything. When in doubt, do the
 smaller, reversible thing.
 
-Last verified: 2026-08-05.
+Last verified: 2026-11-04.
 
 ---
 
@@ -28,29 +28,42 @@ Last verified: 2026-08-05.
 | `origin` | git@github.com:vrthra/ktistec.git            | Our fork (push target)      |
 | `o`      | https://github.com/toddsundsted/ktistec.git  | Upstream (pull only)        |
 
-### Branch state (as of 2026-08-05)
+### Branch state (as of 2026-11-04)
 
-- Local `main` = upstream **v3.9.0** + ~25 local commits rebased on top.
+- Local `main` = upstream **v3.14.0** + ~27 local commits rebased on top
+  (rebased onto `o/main`, which at deploy time was 12 commits past the
+  v3.14.0 tag itself — see "Taking future upstream releases" below for why
+  that's the correct target).
 - Because of the rebase, pushing to the fork requires:
   `git push --force-with-lease origin main`
-- Production runs **3.9.0**, deployed 2026-07-21 (binary `server`, dated
-  Jul 21; rollback copy `server.2026-07-21d-pre-mention-fix`). That build
-  includes the 3.9 rebase, the mention-localization fixes, and the
-  `Follow::Actor` notifications. Check the live version any time with:
+- Production runs **3.14.0**, deployed 2026-11-04 (binary `server`, dated
+  Nov 4; rollback copy `server.2026-11-04-pre-deploy`; db backup
+  `ktistec.db.pre-2026-11-04`). This upgrade jumped three upstream releases
+  (3.12.0 → 3.12.1 → 3.13.0 → 3.14.0) in one rebase; the headline upstream
+  change was a ground-up rearchitecture of feeds (`Feed::Version`,
+  `Feed::Question`, executable judges, batched reconciliation via
+  `Rules::Maintainer.reconcile_objects`), which builds directly on the
+  feed-migration state our fork already created in the 3.12 upgrade (one of
+  upstream's new migrations literally comments "copied from
+  `20260825140851-rebuild-feeds-on-the-object-clock.cr`"). Also notable:
+  upstream independently converged on two of our own FIXES.md items —
+  removing the `PRAGMA optimize`-on-connection-close override, and adding a
+  startup-time `ANALYZE` (superseding our one-time migration fix, FIXES.md
+  #7) — both merged with zero semantic conflict. One real gap was found by
+  the test suite and fixed as part of the rebase: `actor-line.html.slang`
+  (our replacement for upstream's `actor-card.html.slang`) was missing the
+  `data-controller="icon-load-error"` attribute upstream's new icon-repair
+  feature expects; ported it over. Check the live version any time with:
   `ssh web 'curl -s -H "Host: gopinath.org" http://localhost:3000/.well-known/nodeinfo/2.1'`
-- **Local commits NOT yet deployed** (verified 2026-08-05 by grepping the
-  live binary):
-  - `2dee1d23` — CollectGarbage legacy-thread `INDEXED BY` fix (server code;
-    matters only when garbage collection runs, but it is the difference
-    between 0.9s and hours). Probe whether it is live with:
-    `ssh web 'grep -c "INDEXED BY idx_objects_in_reply_to_iri" ~/ktistec/rootdir/app/server'`
-    (`1` = deployed, `0` = not).
-  - `92a57ee2` — this manual, `ops/watchdog.sh`, `ops/db_shard_tool.cr`
-    (docs/tooling; no server-binary impact, but `watchdog.sh` was copied to
-    the server by hand — see 3.1).
-- No migrations are pending: as of 2026-08-05 the repo/production migration
+- No local commits are undeployed as of 2026-11-04 — production and `main`
+  are in sync.
+- No migrations are pending: as of 2026-11-04 the repo/production migration
   diff shows only the documented zero-padding difference and production's
-  extra ids 10 and 19 (see section 4.0).
+  extra ids 10 and 19 (see section 4.0). The 6 feed-version/feed-question
+  migrations that came in with this upgrade all touch only small tables
+  (`feeds`, `feed_verdicts`, `feed_versions`, `feed_questions`, `tasks`);
+  the slowest (`create-feed-questions`, which backfills a cursor via a
+  correlated subquery against `objects`) took 65.8s on production.
 
 ### Taking future upstream releases
 
@@ -156,10 +169,14 @@ Reading the results — two traps, both hit on 2026-08-05:
   the "N examples, 0 failures" line and makes a green run look like a crash.
   Grep for `examples,` rather than tailing.
 
-Baseline as of 2026-08-05 (3.10.0 rebase): **9,412 examples, 0 failures**
-across all 16 directories (models 2353, controllers 2778, framework 895,
-views 891, services 542, utils 479, slang 389, rules 369, api 367, mcp 190,
-safe 122, workers 15, handlers 12, channels 8, ktistec 1, integrations 1).
+Baseline as of 2026-11-04 (3.14.0 rebase): **10,356 examples, 0 failures**
+across all 16 directories (models 2544 [split models-a/models-b, 44 files
+each], controllers 3128 [split ctrl-a/ctrl-b, ~18 files each], framework
+978, views 962, services 681, utils 562, rules 395, api 368, mcp 190,
+safe 122, slang 389, workers 15, handlers 12, channels 8, ktistec 1,
+integrations 1). `spec/models` (88 files) and `spec/controllers` (37 files)
+have both grown large enough to trip the link-stage bug as whole
+directories now too — split each into two halves and run separately.
 
 ### 2.5 Production (static) build — THE DEPLOY ARTIFACT
 
